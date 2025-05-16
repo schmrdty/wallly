@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "module": "commonjs",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": ["*"]
+    }
+  },
+  "include": ["src/**/*", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/TransferForm.tsx", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/SplashPage.tsx", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/TokenValidator.tsx", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/SessionManager.tsx"],
+  "exclude": ["node_modules", "**/*.spec.ts"]
+}

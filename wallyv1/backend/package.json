@@ -1,0 +1,45 @@
+{
+  "name": "warpcast-wally-miniapp-backend",
+  "version": "1.0.0",
+  "description": "Backend for the Wally Wallet Watcher Mini-app to automate non-custodial token transfers.",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "dev": "ts-node-dev src/index.ts",
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "body-parser": "^1.19.0",
+    "cors": "^2.8.5",
+    "dotenv": "^10.0.0",
+    "pg": "^8.7.1",
+    "sequelize": "^6.6.5",
+    "typescript": "^4.5.4",
+    "ts-node": "^10.4.0",
+    "ts-node-dev": "^1.1.8",
+    "supertest": "^6.1.6"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.13",
+    "@types/jest": "^27.0.2",
+    "@types/supertest": "^2.0.11",
+    "@types/node": "^16.11.7",
+    "jest": "^27.0.6",
+    "ts-jest": "^27.0.3"
+  },
+  "keywords": [
+    "warpcast",
+    "mini-app",
+    "backend",
+    "token",
+    "transfers",
+    "wallet-watcher"
+  ],
+  "author": "schmidtiest.eth",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
