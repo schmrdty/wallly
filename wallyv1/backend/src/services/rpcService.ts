@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { JsonRpcProvider } from 'ethers';
 
 const RPC_URLS = [
     process.env.RPC_URL_1,
@@ -9,12 +9,12 @@ const RPC_URLS = [
 
 let lastRpcIndex = Math.floor(Math.random() * RPC_URLS.length);
 
-export function getProvider(): ethers.providers.JsonRpcProvider {
+export function getProvider(): JsonRpcProvider {
     // Randomized round robin with fallback
     for (let i = 0; i < RPC_URLS.length; i++) {
         const idx = (lastRpcIndex + i) % RPC_URLS.length;
         try {
-            const provider = new ethers.providers.JsonRpcProvider(RPC_URLS[idx]);
+            const provider = new JsonRpcProvider(RPC_URLS[idx]);
             lastRpcIndex = idx;
             return provider;
         } catch (e) {

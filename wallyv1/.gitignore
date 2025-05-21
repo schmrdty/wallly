@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+coverage/
+.zip
+*.tgz
+*.tar.gz
+*.tar
+*.tgz
+*.zip
+*.tar.gz
+*.tar
+*.tgz

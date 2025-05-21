@@ -1,109 +1,72 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { validateTokenAddress } from '../utils/validators';
-import { roundRobinTokenResolve } from '../utils/tokenSearch';
 import { transferTokens } from '../utils/api';
+import { validateTokenAddress, validateTransferAmount } from '../utils/validators';
 
 const TransferForm: React.FC = () => {
     const { user } = useAuth();
     const [tokenAddress, setTokenAddress] = useState('');
     const [amount, setAmount] = useState('');
     const [recipient, setRecipient] = useState('');
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    const [resolving, setResolving] = useState(false);
+    const [allowEntireWallet, setAllowEntireWallet] = useState(false);
+    const [status, setStatus] = useState<string | null>(null);
 
-    const handleTokenInputBlur = async () => {
-        setResolving(true);
-        setError('');
-        try {
-            const result = await roundRobinTokenResolve(tokenAddress);
-            if (result.valid && result.address) {
-                setTokenAddress(result.address);
-                setError('');
-            } else if (result.suggestion) {
-                setError(`Did you mean: ${result.suggestion} (${result.symbol})?`);
-            } else {
-                setError('Token not found.');
-            }
-        } catch (e) {
-            setError('Error resolving token.');
-        } finally {
-            setResolving(false);
-        }
-    };
-
-    const handleTransfer = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError('');
-        setSuccess('');
-
+        setStatus(null);
         if (!validateTokenAddress(tokenAddress)) {
-            setError('Invalid token address.');
+            setStatus('Invalid token address.');
             return;
         }
-
-        if (!amount || !recipient) {
-            setError('Please fill in all fields.');
+        if (!validateTransferAmount(amount)) {
+            setStatus('Invalid amount.');
             return;
         }
-
+        if (!recipient) {
+            setStatus('Recipient required.');
+            return;
+        }
         try {
-            const response = await transferTokens(user, tokenAddress, amount, recipient);
-            if (response.success) {
-                setSuccess('Transfer successful!');
-                setTokenAddress('');
-                setAmount('');
-                setRecipient('');
-            } else {
-                setError(response.message || 'Transfer failed.');
-            }
-        } catch (err) {
-            setError('An error occurred during the transfer.');
+            await transferTokens({
+                userAddress: user.address,
+                tokenAddress,
+                amount,
+                recipient,
+                allowEntireWallet,
+            });
+            setStatus('Transfer submitted!');
+        } catch (err: any) {
+            setStatus('Transfer failed: ' + (err.message || 'Unknown error'));
         }
     };
 
     return (
-        <div>
-            <h2>Transfer Tokens</h2>
-            <form onSubmit={handleTransfer}>
-                <div>
-                    <label htmlFor="tokenAddress">Token Address:</label>
-                    <input
-                        type="text"
-                        id="tokenAddress"
-                        value={tokenAddress}
-                        onChange={(e) => setTokenAddress(e.target.value)}
-                        onBlur={handleTokenInputBlur}
-                        required
-                    />
-                    {resolving && <span>Resolving token...</span>}
-                </div>
-                <div>
-                    <label htmlFor="amount">Amount:</label>
-                    <input
-                        type="number"
-                        id="amount"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        required
-                    />
-                </div>
-                <div>
-                    <label htmlFor="recipient">Recipient Address:</label>
-                    <input
-                        type="text"
-                        id="recipient"
-                        value={recipient}
-                        onChange={(e) => setRecipient(e.target.value)}
-                        required
-                    />
-                </div>
-                {error && <p style={{ color: 'red' }}>{error}</p>}
-                {success && <p style={{ color: 'green' }}>{success}</p>}
-                <button type="submit">Transfer</button>
-            </form>
-        </div>
+        <form onSubmit={handleSubmit}>
+            <label>
+                Token Address:
+                <input value={tokenAddress} onChange={e => setTokenAddress(e.target.value)} required />
+            </label>
+            <label>
+                Amount:
+                <input value={amount} onChange={e => setAmount(e.target.value)} required />
+            </label>
+            <label>
+                Recipient:
+                <input value={recipient} onChange={e => setRecipient(e.target.value)} required />
+            </label>
+            <label>
+                Allow Entire Wallet:
+                <select
+                    value={allowEntireWallet ? 'true' : 'false'}
+                    onChange={e => setAllowEntireWallet(e.target.value === 'true')}
+                >
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                </select>
+            </label>
+            <button type="submit" disabled={!user}>Submit</button>
+            {status && <div style={{ marginTop: 8, color: status.includes('failed') ? 'red' : 'green' }}>{status}</div>}
+        </form>
     );
 };
 

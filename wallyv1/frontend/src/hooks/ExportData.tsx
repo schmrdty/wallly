@@ -34,7 +34,7 @@ const ExportData: React.FC = () => {
     return (
         <div>
             <h2>Export User Data</h2>
-            <button onClick={handleExport} disabled={loading}>
+            <button onClick={handleExport} disabled={loading || !user}>
                 {loading ? 'Exporting...' : 'Export Data'}
             </button>
             {error && <p style={{ color: 'red' }}>{error}</p>}

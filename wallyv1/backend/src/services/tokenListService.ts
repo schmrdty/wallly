@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { Token } from '../../db/index'; // PostgreSQL Token model
-import { logError } from '../infrastructure/monitoring/logger';
+import { logError } from '../infra/monitoring/logger
 import { levenshtein } from '../utils/levenshtein';
 import { getTokenFromPostgres } from './postgresService';
 
@@ -27,69 +27,60 @@ const STATIC_TOKENLIST_URLS = [
 
 let lastIpfsIndex = Math.floor(Math.random() * IPFS_LISTS.length);
 
-export async function roundRobinFindToken(query: string): Promise<TokenInfo | null> {
-    // 1. Try IPFS lists in round robin order
+let cachedTokenList: TokenInfo[] = [];
+let lastFetch: number = 0;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+// Helper to find a token in a list by address, symbol, or name
+function findTokenInList(tokens: TokenInfo[], query: string): TokenInfo | undefined {
+    const q = query.toLowerCase();
+    return tokens.find(
+        t =>
+            t.address.toLowerCase() === q ||
+            t.symbol.toLowerCase() === q ||
+            t.name.toLowerCase() === q
+    );
+}
+
+// Fetch token list from IPFS sources
+async function fetchTokenListFromIPFS(): Promise<TokenInfo[]> {
     for (let i = 0; i < IPFS_LISTS.length; i++) {
         lastIpfsIndex = (lastIpfsIndex + 1) % IPFS_LISTS.length;
         const url = IPFS_LISTS[lastIpfsIndex];
         try {
             const { data } = await axios.get(url);
-            const token = data.tokens.find(
-                (t: any) =>
-                    t.address.toLowerCase() === query.toLowerCase() ||
-                    t.symbol.toLowerCase() === query.toLowerCase() ||
-                    t.name.toLowerCase() === query.toLowerCase()
-            );
-            if (token) return token;
+            if (data && data.tokens && data.tokens.length) {
+                return data.tokens;
+            }
         } catch (e) {
             // Continue to next IPFS list
         }
     }
-    // 2. Fallback: Static Tokenlist URLs
+    return [];
+}
+
+// Fetch token list from static URLs
+async function fetchTokenListFromStatic(): Promise<TokenInfo[]> {
     for (const url of STATIC_TOKENLIST_URLS) {
         try {
             const { data } = await axios.get(url);
-            const token = data.tokens.find(
-                (t: any) =>
-                    t.address.toLowerCase() === query.toLowerCase() ||
-                    t.symbol.toLowerCase() === query.toLowerCase() ||
-                    t.name.toLowerCase() === query.toLowerCase()
-            );
-            if (token) return token;
+            if (data && data.tokens && data.tokens.length) {
+                return data.tokens;
+            }
         } catch (e) {
             // Continue to next static URL
         }
     }
-    // 3. Fallback: PostgreSQL
-    const token = await Token.findOne({
-        where: {
-            [Token.sequelize!.Op.or]: [
-                { address: query },
-                { symbol: query },
-                { name: query }
-            ]
-        }
-    });
-    return token ? token.toJSON() : null;
+    return [];
 }
 
-function findTokenInList(tokens, query) {
-  const q = query.toLowerCase();
-  return tokens.find(
-    t =>
-      t.address.toLowerCase() === q ||
-      t.symbol.toLowerCase() === q ||
-      t.name.toLowerCase() === q
-  );
+// Fetch token list from PostgreSQL
+async function fetchTokenListFromPostgres(): Promise<TokenInfo[]> {
+    const tokens = await getTokenFromPostgres();
+    return tokens || [];
 }
+
 // Main: Load token list with all fallbacks and cache
-// ...existing imports...
-
-const STATIC_TOKENLIST_URLS = [
-    process.env.STATIC_TOKENLIST_URL1,
-    process.env.STATIC_TOKENLIST_URL2,
-].filter(Boolean);
-
 export async function loadTokenList(forceReload = false): Promise<TokenInfo[]> {
     const now = Date.now();
     if (!forceReload && cachedTokenList.length && now - lastFetch < CACHE_TTL_MS) {
@@ -105,17 +96,11 @@ export async function loadTokenList(forceReload = false): Promise<TokenInfo[]> {
     }
 
     // 2. Fallback: Static Tokenlist URLs
-    for (const url of STATIC_TOKENLIST_URLS) {
-        try {
-            const { data } = await axios.get(url);
-            if (data && data.tokens && data.tokens.length) {
-                cachedTokenList = data.tokens;
-                lastFetch = now;
-                return cachedTokenList;
-            }
-        } catch (e) {
-            // Try next URL
-        }
+    const staticList = await fetchTokenListFromStatic();
+    if (staticList && staticList.length) {
+        cachedTokenList = staticList;
+        lastFetch = now;
+        return cachedTokenList;
     }
 
     // 3. Fallback: PostgreSQL
@@ -128,6 +113,32 @@ export async function loadTokenList(forceReload = false): Promise<TokenInfo[]> {
 
     throw new Error('Failed to load token list from any source.');
 }
+
+// Round robin token search (tries all sources in order)
+export async function roundRobinFindToken(query: string): Promise<TokenInfo | null> {
+    // 1. Try IPFS lists in round robin order
+    const ipfsList = await fetchTokenListFromIPFS();
+    const ipfsToken = findTokenInList(ipfsList, query);
+    if (ipfsToken) return ipfsToken;
+
+    // 2. Fallback: Static Tokenlist URLs
+    const staticList = await fetchTokenListFromStatic();
+    const staticToken = findTokenInList(staticList, query);
+    if (staticToken) return staticToken;
+
+    // 3. Fallback: PostgreSQL
+    const token = await Token.findOne({
+        where: {
+            [Token.sequelize!.Op.or]: [
+                { address: query },
+                { symbol: query },
+                { name: query }
+            ]
+        }
+    });
+    return token ? token.toJSON() : null;
+}
+
 // Helper: Fuzzy search for token by address
 export function fuzzyFindTokenByAddress(address: string, maxDistance = 2): TokenInfo | undefined {
     let best: { token?: TokenInfo; dist: number } = { dist: Number.MAX_SAFE_INTEGER };
@@ -150,7 +161,10 @@ export function findTokenBySymbol(symbol: string): TokenInfo | undefined {
 export function findTokenByName(name: string): TokenInfo | undefined {
     return cachedTokenList.find(t => t.name.toLowerCase() === name.toLowerCase());
 }
+
+// Periodically refresh the token list cache
 setInterval(() => loadTokenList(true).catch(logError), CACHE_TTL_MS);
+
 export async function refreshTokenList(): Promise<TokenInfo[]> {
     return loadTokenList(true);
 }

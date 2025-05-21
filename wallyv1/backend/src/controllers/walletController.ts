@@ -1,18 +1,24 @@
 import { Request, Response } from 'express';
 import { WalletService } from '../services/walletService';
-import { logError } from '../infrastructure/monitoring/logger';
+import { WallyService } from '../services/wallyService';
+import { logError } from '../infra/mon/logger';
 
 const walletService = new WalletService();
+const wallyService = new WallyService();
 
 export const getWalletInfo = async (req: Request, res: Response) => {
     try {
         const walletId = req.params.id;
         if (!walletId) return res.status(400).json({ message: 'Missing wallet ID' });
 
+        // Fetch wallet info from DB
         const walletInfo = await walletService.getWalletInfo(walletId);
         if (!walletInfo) return res.status(404).json({ message: 'Wallet not found' });
 
-        res.status(200).json(walletInfo);
+        // Fetch on-chain balances using WallyService
+        const onChainBalances = await wallyService.getAllTokenBalances(walletInfo.address);
+
+        res.status(200).json({ ...walletInfo, onChainBalances });
     } catch (error) {
         logError(`Error retrieving wallet info: ${error}`);
         res.status(500).json({ message: 'Error retrieving wallet information' });

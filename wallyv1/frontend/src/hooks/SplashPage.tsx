@@ -1,38 +1,40 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 
 const SplashPage: React.FC = () => {
     return (
         <div className="splash-page">
-            <h1>Welcome to the Warpcast Mini-App</h1>
-            <img src="/splash.png"/>
+            <h1>Welcome to Wally the Wallet Watcher</h1>
+            <img src="/splash.png" alt="Wally Logo" />
             <p>
-                This application allows you to automate non-custodial token transfers securely and easily.
-                Please follow the instructions below to get started.
+                Wally helps you automate non-custodial token transfers securely and efficiently. 
+                Get started by following the steps below.
             </p>
             <h2>Getting Started</h2>
             <ol>
                 <li>
-                    <strong>Authenticate:</strong> Use your Farcaster account to log in and create a session.
+                    <strong>Authenticate:</strong> Log in using your Farcaster account to create a secure session.
                 </li>
                 <li>
-                    <strong>Validate Tokens:</strong> Ensure the tokens you wish to transfer are valid by using the Token Validator.
+                    <strong>Validate Tokens:</strong> Use the Token Validator to ensure the tokens you want to transfer are valid.
                 </li>
                 <li>
-                    <strong>Transfer Tokens:</strong> Fill out the Transfer Form to initiate your token transfers.
+                    <strong>Transfer Tokens:</strong> Use the Transfer Form to send tokens to your desired recipient.
                 </li>
                 <li>
-                    <strong>Monitor Events:</strong> Keep an eye on the Event Feed for real-time updates on your transactions.
+                    <strong>Manage Sessions:</strong> View and revoke active sessions for enhanced security.
                 </li>
                 <li>
-                    <strong>Export Data:</strong> Use the Export Data feature to download your transactions while using Wally.
+                    <strong>Monitor Events:</strong> Track real-time updates on your transactions in the Event Feed.
+                </li>
+                <li>
+                    <strong>Export Data:</strong> Download your transaction history for your records.
                 </li>
             </ol>
             <h2>Safety Tips</h2>
             <ul>
-                <li>Always double-check token addresses before initiating transfers.</li>
-                <li>Keep your Farcaster credentials secure and do not share them with anyone.</li>
-                <li>Regularly review your session status and revoke sessions that are no longer needed.</li>
+                <li>Double-check recipient addresses before confirming a transfer.</li>
+                <li>Keep your Farcaster credentials secure and private.</li>
+                <li>Regularly review and revoke unused sessions.</li>
             </ul>
             <Link to="/instructions" className="btn">
                 View Detailed Instructions

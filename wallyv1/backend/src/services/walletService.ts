@@ -16,23 +16,31 @@ export const sendTransaction = async (privateKey: string, to: string, value: str
 };
 
 export class WalletService {
+    // Example 1: Retrieve wallet info from DB or blockchain
     async getWalletInfo(walletId: string) {
-        // TODO: Implement wallet info retrieval
+        // TODO: Implement wallet info retrieval from DB or blockchain
         return { id: walletId, info: 'stub' };
     }
+
+    // Example 2: Create a new wallet (could use ethers.js or a custodial service)
     async createWallet(walletData: any) {
-        // TODO: Implement wallet creation
+        // TODO: Implement wallet creation logic
         return { ...walletData, id: 'stub' };
     }
+
+    // Example 3: Update wallet metadata in DB
     async updateWallet(walletId: string, walletData: any) {
-        // TODO: Implement wallet update
+        // TODO: Implement wallet update logic
         return { ...walletData, id: walletId };
     }
+
+    // Example 4: Delete wallet from DB
     async deleteWallet(walletId: string) {
-        // TODO: Implement wallet deletion
+        // TODO: Implement wallet deletion logic
         return true;
     }
 
+    // Example 5: Create a Coinbase Smart Wallet via API
     async createCoinbaseSmartWallet(userId: string, userEmail: string) {
         const apiKey = process.env.COINBASE_API_KEY;
         const url = 'https://api.cdp.coinbase.com/v1/wallets';
@@ -52,5 +60,17 @@ export class WalletService {
             }
         );
         return response.data; // Contains wallet address, etc.
+    }
+
+    // Example 6: List all wallets for a user
+    async listUserWallets(userId: string) {
+        // TODO: Implement logic to list all wallets for a user
+        return [];
+    }
+
+    // Example 7: Get wallet transaction history
+    async getWalletTransactions(walletId: string) {
+        // TODO: Implement logic to fetch wallet transaction history
+        return [];
     }
 }

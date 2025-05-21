@@ -1,7 +1,37 @@
 import { Request, Response } from 'express';
 import { sessionService } from '../services/sessionService';
 import { fuzzyFindTokenByAddress } from '../services/tokenListService';
-import { wallyService } from '../services/wallyService';
+import { WallyService } from '../services/wallyService';
+import { logError } from '../infra/monitoring/logger';
+
+const wallyService = new WallyService();
+export const getTokenBalance = async (req: Request, res: Response) => {
+    const { userAddress, tokenAddress } = req.body;
+
+    try {
+        // Validate user session
+        const isValidSession = await sessionService.validateSession(userAddress);
+        if (!isValidSession) {
+            return res.status(401).json({ message: 'Invalid session or signature.' });
+        }
+
+        // Validate token address using fuzzy match and token list service
+        const token = fuzzyFindTokenByAddress(tokenAddress);
+        if (!token) {
+            return res.status(400).json({ message: 'Invalid token address.', suggestion: null });
+        }
+        if (token.address.toLowerCase() !== tokenAddress.toLowerCase()) {
+            return res.status(400).json({ message: 'Invalid token address.', suggestion: token.address, symbol: token.symbol });
+        }
+
+        // Fetch balance
+        const balance = await wallyService.getTokenBalance(userAddress, tokenAddress);
+        res.status(200).json({ balance });
+    } catch (error: any) {
+        logError(`Error occurred while fetching balance: ${error}`);
+        return res.status(500).json({ message: 'An error occurred while fetching the balance.', error: error.message });
+    }
+}
 
 export const transferTokens = async (req: Request, res: Response) => {
     const { userAddress, tokenAddress, amount, signature } = req.body;
