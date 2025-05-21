@@ -1,6 +1,6 @@
-import { Farcaster } from 'farcaster-js';
 import { verifySignature } from '../utils/signature';
 import { Session } from '../utils/session';
+import { appClient } from 'your-farcaster-client-lib'; // Replace with actual Farcaster client import
 
 const farcasterClient = new Farcaster();
 
@@ -25,4 +25,34 @@ export const revokeSession = async (sessionId: string): Promise<void> => {
 export const getUserFarcasterData = async (farcasterAddress: string): Promise<any> => {
     const userData = await farcasterClient.getUser(farcasterAddress);
     return userData;
+};
+
+export const farcasterService = {
+  validateSignature: async ({
+    domain,
+    nonce,
+    message,
+    signature,
+  }: {
+    domain: string;
+    nonce: string;
+    message: string;
+    signature: string;
+  }) => {
+    const result = await appClient.verifySignInMessage({
+      nonce,
+      domain,
+      message,
+      signature,
+    });
+
+    // You can return the whole result or just what you need
+    return {
+      success: result.success,
+      fid: result.fid,
+      data: result.data,
+      isError: result.isError,
+      error: result.error,
+    };
+  },
 };

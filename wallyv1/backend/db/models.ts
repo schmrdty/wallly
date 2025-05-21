@@ -317,7 +317,6 @@ export const initializeModels = (sequelize: Sequelize) => {
             userAddress: {
                 type: DataTypes.STRING,
                 allowNull: false,
-                index: true,
             },
             delegate: {
                 type: DataTypes.STRING,
@@ -345,6 +344,11 @@ export const initializeModels = (sequelize: Sequelize) => {
             sequelize,
             tableName: 'mini_app_sessions',
             timestamps: true,
+            indexes: [
+                {
+                    fields: ['userAddress'],
+                },
+            ],
         }
     );
 
@@ -358,7 +362,7 @@ export const initializeModels = (sequelize: Sequelize) => {
             userAddress: {
                 type: DataTypes.STRING,
                 allowNull: false,
-                index: true,
+                
             },
             withdrawalAddress: {
                 type: DataTypes.STRING,
@@ -437,7 +441,6 @@ export const initializeModels = (sequelize: Sequelize) => {
             transactionHash: {
                 type: DataTypes.STRING,
                 allowNull: false,
-                index: true,
             },
         },
         {
@@ -488,7 +491,6 @@ export const initializeModels = (sequelize: Sequelize) => {
             transactionHash: {
                 type: DataTypes.STRING,
                 allowNull: false,
-                index: true,
             },
         },
         {
@@ -512,7 +514,6 @@ export const initializeModels = (sequelize: Sequelize) => {
             transactionHash: {
                 type: DataTypes.STRING,
                 allowNull: false,
-                index: true,
             },
         },
         {
@@ -553,7 +554,6 @@ export const initializeModels = (sequelize: Sequelize) => {
             transactionHash: {
                 type: DataTypes.STRING,
                 allowNull: false,
-                index: true,
             },
         },
         {
@@ -581,7 +581,6 @@ export const initializeModels = (sequelize: Sequelize) => {
             transactionHash: {
                 type: DataTypes.STRING,
                 allowNull: false,
-                index: true,
             },
         },
         {

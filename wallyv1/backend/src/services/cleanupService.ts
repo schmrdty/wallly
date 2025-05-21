@@ -1,15 +1,18 @@
 import redisClient from '../../db/redisClient';
 import { deliverUserDataBeforeCleanup } from './wallyService';
+import { User } from '../../db/models'; // Sequelize User model
 
 // Get user delivery preferences and contact info from DB/session
 async function getUserContactAndPrefs(userAddress: string) {
-  // Replace with real DB/session lookup
+  //  Fetch from PostgreSQL User table
+  const user = await User.findOne({ where: { address: userAddress } });
+  if (!user) throw new Error('User not found');
   return {
-    deliveryMethods: ['email', 'telegram'],
+    deliveryMethods: user.deliveryMethods || ['email'],
     userContact: {
-      email: 'user@example.com',
-      telegramId: '123456789',
-      warpcastFid: undefined,
+      email: user.email,
+      telegramId: user.telegramId,
+      warpcastFid: user.warpcastFid,
     },
   };
 }
@@ -50,7 +53,7 @@ export async function deliverUserDataBeforeCleanup(
  * Wipe all user data from Redis except minimal metadata after revoke/expiry.
  * Keeps: earliest oracle/block timestamp, revoke date, wallet address, and delivery method(s).
  */
-async wipeUserDataExceptMetadata(userAddress: string, event: any) {
+export async function wipeUserDataExceptMetadata(userAddress: string, event: any) {
     const events = await redisClient.lRange(`userEvents:${userAddress}`, 0, -1);
     let earliestOracle = null;
     let earliestBlock = null;

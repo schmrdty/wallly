@@ -4,7 +4,7 @@ import { api } from "../utils/api";
 import { formatCurrency, formatDate, formatTransactionId } from '../utils/formatters';
 
 // Replace with your deployed contract address and ABI
-const CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS;
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
 const CONTRACT_ABI = [
   // Only the relevant events for brevity
   "event TransferPerformed(address indexed user, address indexed token, uint256 amount, address indexed destination, uint256 userRemaining, uint256 oracleTimestamp, uint256 blockTimestamp)",

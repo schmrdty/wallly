@@ -1,54 +1,40 @@
-import { useEffect, useState } from 'react';
-import { getSession, validateSession as apiValidateSession, revokeSession as apiRevokeSession } from '../utils/api';
+import { useState, useEffect } from 'react';
+import { setSessionId, getSessionId, clearSessionId, validateSession, revokeSession } from '../utils/session';
 
-const useSession = () => {
-    const [session, setSession] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+export function useSession() {
+  const [isValid, setIsValid] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        async function fetchSession() {
-            try {
-                const sessionData = await getSession();
-                setSession(sessionData);
-            } catch (err) {
-                setSession(null);
-                setError(err);
-            } finally {
-                setLoading(false);
-            }
-        }
-        fetchSession();
-    }, []);
+  useEffect(() => {
+    async function check() {
+      setLoading(true);
+      setError(null);
+      try {
+        const valid = await validateSession();
+        setIsValid(valid);
+        if (!valid) clearSessionId();
+      } catch (err: any) {
+        setError(err.message || 'Session validation failed');
+        setIsValid(false);
+      } finally {
+        setLoading(false);
+      }
+    }
+    check();
+  }, []);
 
-    const isValid = !!session && !error && !loading;
+  // Call this after SIWE login
+  function onLogin(sessionId: string) {
+    setSessionId(sessionId);
+    setIsValid(true);
+  }
 
-    // Graceful session expiration
-    useEffect(() => {
-        if (!isValid && !loading) {
-            // Optionally: redirect to /auth or show modal
-        }
-    }, [isValid, loading]);
+  // Call this on logout
+  async function logout() {
+    await revokeSession();
+    setIsValid(false);
+  }
 
-    // Add validateSession and revokeSession for use in components
-    const validateSession = async () => {
-        try {
-            return await apiValidateSession();
-        } catch {
-            return false;
-        }
-    };
-
-    const revokeSession = async () => {
-        try {
-            await apiRevokeSession();
-            setSession(null);
-        } catch (err) {
-            // handle error
-        }
-    };
-
-    return { session, loading, error, isValid, validateSession, revokeSession };
-};
-
-export default useSession;
+  return { isValid, loading, error, onLogin, logout };
+}

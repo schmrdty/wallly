@@ -12,6 +12,6 @@
       "@/*": ["*"]
     }
   },
-  "include": ["src/**/*", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/TransferForm.tsx", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/SplashPage.tsx", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/TokenValidator.tsx", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/SessionManager.tsx"],
+  "include": ["src/**/*", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/TransferForm.tsx", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/SplashPage.tsx", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/TokenValidator.tsx", "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/SessionManager.tsx", "pages/Dashboard.tsx", "pages/Settings.tsx", "pages/Instructions.tsx", "pages/Home.tsx"],
   "exclude": ["node_modules", "**/*.spec.ts"]
 }

@@ -4,7 +4,7 @@ import WallyV1 from '../artifacts/WallyV1.json';
 import { sessionService } from './sessionService';
 import { TransferPerformedEvent, PermissionGrantedEvent, PermissionRevokedEvent, MiniAppSessionGrantedEvent, MiniAppSessionRevokedEvent } from '../../db/models';
 import redisClient from '../../db/redisClient';
-import { logInfo, logError } from '../infrastructure/monitoring/logger';
+import { logInfo, logError } from '../infra/monitoring/logger
 
 const provider = new ethers.providers.JsonRpcProvider(process.env.RPC_URL);
 const contract = new ethers.Contract(wallyv1Address, WallyV1.abi, provider);
