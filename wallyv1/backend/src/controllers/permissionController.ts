@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import redisClient from '../../db/redisClient';
-import { Permission } from '../../db/models';
+import redisClient from '../db/redisClient';
+import { Permission } from '../db/models';
 import { WallyService } from '../services/wallyService';
 
 const wallyService = new WallyService();

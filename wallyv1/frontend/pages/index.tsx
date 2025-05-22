@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import Home from './Home';
-import { logger } from '../utils/logger';
+import { logger } from '../src/utils/logger';
 import { useAuth } from '../src/hooks/useAuth';
 import React from 'react';
 

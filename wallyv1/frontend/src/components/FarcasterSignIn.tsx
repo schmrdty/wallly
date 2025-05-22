@@ -2,11 +2,11 @@ import React from 'react';
 import { useSignIn, QRCode } from '@farcaster/auth-kit';
 import { api } from '../utils/api';
 
-export const FarcasterSignIn: React.FC = () => {
+export const FarcasterSignIn: React.FC<{ onError?: (error: any) => void }> = (props) => {
   const {
     signIn,
     url,
-    data: { message, signature, fid, username, pfpUrl },
+    data: { message, signature, fid, username, pfpUrl } = {},
     isSuccess,
     error,
   } = useSignIn({
@@ -17,18 +17,18 @@ export const FarcasterSignIn: React.FC = () => {
         fid,
         username,
         pfpUrl,
-      }).then((response) => {
-        // Handle successful login
-        console.log('Login successful:', response.data);
-        setUser({ address: response.data.address, fid });
-      }
-      )props.onError((error) => {
-        // Handle error
-        log.error('Login error:', error); 
-        alert('Login failed. Please try again.');
-    
-
-      });
+      })
+        .then((response) => {
+          // Handle successful login
+          console.log('Login successful:', response.data);
+          // setUser({ address: response.data.address, fid }); // Uncomment if setUser is in scope
+        })
+        .catch((error) => {
+          // Handle error
+          console.error('Login error:', error);
+          alert('Login failed. Please try again.');
+          if (props.onError) props.onError(error);
+        });
     },
   });
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import '../styles/styles.css';
 import type { AppProps } from 'next/app';
-import { logger } from '../utils/logger';
+import { logger } from '../src/utils/logger';
 
 function SplashPage({ onComplete }: { onComplete: () => void }) {
   const [daysLeft, setDaysLeft] = useState<number | null>(null);
@@ -80,6 +80,15 @@ function MyApp({ Component, pageProps }: AppProps) {
       }
     }
   }, []);
+  
+  const userId = pageProps?.user?.id;
+  useEffect(() => {
+    logger.info('User logged in', { userId });
+    logger.warn('API rate limit approaching', { userId });
+    logger.error('Failed to fetch data', { error: 'timeout', userId });
+    logger.debug('Debugging details', { foo: 'bar', userId });
+  }, [userId]);
+  // -------------------------------------------
 
   return showSplash ? (
     <SplashPage onComplete={() => setShowSplash(false)} />
@@ -94,10 +103,5 @@ function MyApp({ Component, pageProps }: AppProps) {
     </>
   );
 }
-
-logger.info('User logged in', { userId: 123 });
-logger.warn('API rate limit approaching');
-logger.error('Failed to fetch data', { error: 'timeout' });
-logger.debug('Debugging details', { foo: 'bar' });
 
 export default MyApp;

@@ -1,12 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { logger } from '../utils/logger';
-import { useAuth } from '../src/hooks/useAuth';
 
-const SplashPage = ({ onComplete }: { onComplete?: () => void }) => {
+const   SplashPage = ({ onComplete }: { onComplete?: () => void }) => {
   const [daysLeft, setDaysLeft] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
-  const userId = user?.id;
 
   useEffect(() => {
     fetch('/api/contract-expiry', { credentials: 'include' })
@@ -22,23 +18,49 @@ const SplashPage = ({ onComplete }: { onComplete?: () => void }) => {
       .catch(() => setDaysLeft(null))
       .finally(() => {
         setLoading(false);
-        if (onComplete) setTimeout(onComplete, 2000); // Simulate splash delay
+        if (onComplete) setTimeout(onComplete, 2000);
       });
   }, [onComplete]);
 
-  useEffect(() => {
-    if (userId) {
-      logger.info('Splash page viewed', { userId });
-    }
-  }, [userId]);
-
   return (
-    <div className="splash">
-      <h1>Welcome to Wally!</h1>
-      {daysLeft !== null && (
-        <p>Your contract expires in <strong>{daysLeft}</strong> days.</p>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#f7fafc'
+    }}>
+      <img src="/logo.png" alt="Wally Logo" style={{ width: 120, marginBottom: 24 }} />
+      <h1 style={{ fontSize: '2.5rem', marginBottom: 16 }}>Wally the Wallet Watcher</h1>
+      {loading ? (
+        <div>
+          <div className="spinner" style={{
+            border: '4px solid #eee',
+            borderTop: '4px solid #0070f3',
+            borderRadius: '50%',
+            width: 40,
+            height: 40,
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 16px'
+          }} />
+          <div>Loading your session...</div>
+        </div>
+      ) : daysLeft !== null ? (
+        <div style={{ fontSize: '1.3rem', margin: '16px 0' }}>
+          <strong>{daysLeft}</strong> day{daysLeft === 1 ? '' : 's'} left before contract expiry.
+        </div>
+      ) : (
+        <div style={{ fontSize: '1.1rem', color: '#888', margin: '16px 0' }}>
+          Welcome! No active session found.
+        </div>
       )}
-      <p>{loading ? "Loading..." : "Ready!"}</p>
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg);}
+          100% { transform: rotate(360deg);}
+        }
+      `}</style>
     </div>
   );
 };

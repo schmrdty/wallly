@@ -1,4 +1,4 @@
-import redisClient from '../../db/redisClient';
+import redisClient from '../db/redisClient';
 import { WallyService } from './wallyService';
 
 const wallyService = new WallyService();

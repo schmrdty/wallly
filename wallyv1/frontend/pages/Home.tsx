@@ -3,7 +3,7 @@ import Auth from '../src/components/Auth';
 import Link from 'next/link';
 import SIWEButton from '../src/components/SIWEButton';
 import { FarcasterSignIn } from '../src/components/FarcasterSignIn';
-import { logger } from '../utils/logger';
+import { logger } from '../src/utils/logger';
 import { useAuth } from '../src/hooks/useAuth';
 
 const Home = () => {

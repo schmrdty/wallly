@@ -1,6 +1,6 @@
-import redisClient from '../../db/redisClient';
+import redisClient from '../db/redisClient';
 import { deliverUserDataBeforeCleanup } from './wallyService';
-import { User } from '../../db/models'; // Sequelize User model
+import { User } from '../db/models'; // Sequelize User model
 
 // Get user delivery preferences and contact info from DB/session
 async function getUserContactAndPrefs(userAddress: string) {

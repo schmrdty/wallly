@@ -1,37 +1,46 @@
 import { Request, Response } from 'express';
+import Joi from 'joi';
+import jwt from 'jsonwebtoken';
+import { logError } from '../infra/mon/logger';
 import { farcasterService } from '../services/farcasterService';
 import { WallyService } from '../services/wallyService';
 import { sessionService } from '../services/sessionService';
-import { logError } from '../infra/mon/logger';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+const loginSchema = Joi.object({
+    username: Joi.string().required(),
+    password: Joi.string().required(),
+});
 
 const wallyService = new WallyService();
 
 export const login = async (req: Request, res: Response) => {
-    try {
-        // Accept either userAddress or fid, but prefer fid if using Farcaster
-        const { signature, userAddress, domain, nonce, message } = req.body;
-        const { success, fid, error } = await farcasterService.validateSignature({
-            domain,
-            nonce,
-            message,
-            signature,
-        });
+    const { error } = loginSchema.validate(req.body);
+    if (error) return res.status(400).json({ message: error.details[0].message });
 
-        if (!success) {
-            logError('Farcaster signature verification failed', error);
+    const { username, password } = req.body;
+    try {
+        // Replace with your actual user lookup and password check
+        // Sign in with Farcaster (Ethereum signature verification)
+        const { message, signature, nonce, domain } = req.body;
+        const result = await farcasterService.validateSignature({ domain, nonce, message, signature });
+
+        if (!result.success) {
             return res.status(401).json({ message: 'Invalid signature' });
         }
 
-        // Optionally: Sync on-chain permissions using fid or userAddress
-        await wallyService.syncUserPermissions(userAddress || fid);
+        // You can use result.fid or result.data as the user identifier
+        const user = { id: result.fid, username: result.data?.username || '' };
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
 
-        // Optionally: Store fid in session or user record
-        const session = await sessionService.createSession(userAddress || fid, true);
-
-        res.status(200).json({ session, fid });
-    } catch (error) {
-        logError('Error during creating session', error);
-        res.status(500).json({ message: 'Internal server error', error: (error as Error).message });
+        // Create JWT
+        const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1d' });
+        res.status(200).json({ token });
+    } catch (err) {
+        logError(`Login error: ${err}`);
+        res.status(500).json({ message: 'Internal server error' });
     }
 };
 
@@ -39,7 +48,7 @@ export const logout = async (req: Request, res: Response) => {
     try {
         const { userAddress, fid } = req.body;
         await sessionService.revokeSession(userAddress || fid, 'user');
-        await wallyService.revokeUserPermissions(userAddress || fid);
+        await wallyService.revokeUserPermission(userAddress || fid);
         res.status(200).json({ message: 'Logged out' });
     } catch (error) {
         logError('Error during Logout', error);

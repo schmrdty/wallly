@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import axios from 'axios';
 import FormData from 'form-data';
-import redisClient from '../../db/redisClient';
+import redisClient from '../db/redisClient';
 import { v4 as uuidv4 } from 'uuid';
 import base64url from 'base64url';
 
