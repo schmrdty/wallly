@@ -1,5 +1,5 @@
 import React from 'react';
-import { logger } from '../utils/logger';
+import { logger } from '../src/utils/logger';
 import { useAuth } from '../src/hooks/useAuth';
 
 const images = {

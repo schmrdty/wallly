@@ -1,5 +1,7 @@
 import { ethers } from 'ethers';
 import axios from 'axios';
+import { Wallet } from '../models/Wallet'; // Example ORM model
+import { logError } from '../infra/mon/logger';
 
 export const getWalletBalance = async (walletAddress: string, providerUrl: string): Promise<string> => {
     const provider = new ethers.providers.JsonRpcProvider(providerUrl);
@@ -18,26 +20,51 @@ export const sendTransaction = async (privateKey: string, to: string, value: str
 export class WalletService {
     // Example 1: Retrieve wallet info from DB or blockchain
     async getWalletInfo(walletId: string) {
-        // TODO: Implement wallet info retrieval from DB or blockchain
-        return { id: walletId, info: 'stub' };
+        try {
+            const wallet = await Wallet.findByPk(walletId);
+            if (!wallet) throw new Error('Wallet not found');
+            return wallet;
+        } catch (err) {
+            logError('getWalletInfo failed', err);
+            throw err;
+        }
     }
 
     // Example 2: Create a new wallet (could use ethers.js or a custodial service)
     async createWallet(walletData: any) {
-        // TODO: Implement wallet creation logic
-        return { ...walletData, id: 'stub' };
+        try {
+            const wallet = await Wallet.create(walletData);
+            return wallet;
+        } catch (err) {
+            logError('createWallet failed', err);
+            throw err;
+        }
     }
 
     // Example 3: Update wallet metadata in DB
     async updateWallet(walletId: string, walletData: any) {
-        // TODO: Implement wallet update logic
-        return { ...walletData, id: walletId };
+        try {
+            const wallet = await Wallet.findByPk(walletId);
+            if (!wallet) throw new Error('Wallet not found');
+            await wallet.update(walletData);
+            return wallet;
+        } catch (err) {
+            logError('updateWallet failed', err);
+            throw err;
+        }
     }
 
     // Example 4: Delete wallet from DB
     async deleteWallet(walletId: string) {
-        // TODO: Implement wallet deletion logic
-        return true;
+        try {
+            const wallet = await Wallet.findByPk(walletId);
+            if (!wallet) throw new Error('Wallet not found');
+            await wallet.destroy();
+            return true;
+        } catch (err) {
+            logError('deleteWallet failed', err);
+            throw err;
+        }
     }
 
     // Example 5: Create a Coinbase Smart Wallet via API
@@ -62,15 +89,33 @@ export class WalletService {
         return response.data; // Contains wallet address, etc.
     }
 
-    // Example 6: List all wallets for a user
+    // -- List all wallets for a user
     async listUserWallets(userId: string) {
-        // TODO: Implement logic to list all wallets for a user
-        return [];
+        const apiKey = process.env.COINBASE_API_KEY;
+        const url = `https://api.cdp.coinbase.com/v1/wallets`;
+
+        const response = await axios.get(url, {
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+            },
+            params: {
+                user_id: userId,
+            },
+        });
+        return response.data; // Contains list of wallets
     }
 
-    // Example 7: Get wallet transaction history
     async getWalletTransactions(walletId: string) {
-        // TODO: Implement logic to fetch wallet transaction history
-        return [];
+        const apiKey = process.env.COINBASE_API_KEY;
+        const url = `https://api.cdp.coinbase.com/v1/wallets/${walletId}/transactions`;
+
+        const response = await axios.get(url, {
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+            },
+        });
+        return response.data; // Contains wallet transaction history
     }
 }

@@ -7,14 +7,15 @@ import sessionRoutes from './routes/sessions';
 import walletRoutes from './routes/walletRoutes';
 import tokenRoutes from './routes/token';
 import { startEventListeners } from './services/eventListenerService';
-import { connectRedis } from '../db/redisClient';
-import { sequelize } from '../db/index';
+import { connectRedis } from './db/redisClient';
+import { sequelize } from './db/index';
 import rateLimit from 'express-rate-limit';
 import session from 'express-session';
 import sessionsRoutes from './routes/sessions';
 import { logError, logInfo, logDebug, logWarn } from './infra/mon/logger';
 import { Request, Response, NextFunction } from 'express';
 import { processScheduledRenewals } from './services/permissionRenewalWorker';
+import { logger } from '../utils/logger';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -65,6 +66,10 @@ app.use('/sessions', sessionsRoutes);
 
 // Start contract event listeners
 startEventListeners();
+// Health check route
+app.get('/health', (req, res) => {
+  res.status(200).json({ message: 'OK' });
+});
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

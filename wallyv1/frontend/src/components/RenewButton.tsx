@@ -1,19 +1,23 @@
 import React from 'react';
 import { api } from '../utils/api';
-import { logger } from '../utils/logger';
-const RenewButton = ({ userId }: { userId: string }) => {
+import { logger } from '../src/utils/logger';
+
+const RenewButton = ({ userId, disabled }: { userId: string; disabled?: boolean }) => {
   const handleRenew = async () => {
-    await api.post('/api/permissions/renew', { userId });
-    // Optionally show a success message
-    alert('Permission renewed successfully!');
-    }
-    .catch((error) => {
-      // Handle error
+    try {
+      await api.post('/api/permissions/renew', { userId });
+      alert('Permission renewed successfully!');
+    } catch (error) {
       logger.error('Error renewing permission', error);
       alert('Failed to renew permission.');
-    });
+    }
   };
-  return <button onClick={handleRenew}>Renew Permission</button>;
+
+  return (
+    <button onClick={handleRenew} disabled={disabled}>
+      Renew Permission
+    </button>
+  );
 };
 
 export default RenewButton;

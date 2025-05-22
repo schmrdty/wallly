@@ -1,7 +1,9 @@
 import { ethers } from 'ethers';
 import wallyV1Abi from '../routes/abis/wallyv1.json';
-import redisClient from '../../db/redisClient';
-
+import redisClient from '../db/redisClient';
+import express from 'express';
+import { createWallet, getWalletInfo, updateWallet, deleteWallet } from '../controllers/walletController';
+import { authenticate } from '../middleware/authenticate';
 /**
  * WallyService: Handles contract interactions for token/NFT forwarding and session/permission logic.
  * Uses only contract methods present in the ABI and ensures all actions are session-aware and safe.
@@ -243,6 +245,10 @@ export class WallyService {
 
     // Store minimal metadata
     await redisClient.lPush(`userEvents:${user}`, JSON.stringify(metadata));
+
+    // Before deleting, send data to user (e.g., via email or download link)
+    const userData = await redisClient.lRange(`userEvents:${user}`, 0, -1);
+    await sendEmail(user.email, 'Your Wally Data', JSON.stringify(userData));
   }
 
   async startWatchingToken(userAddress: string, tokenAddress: string) {
@@ -360,7 +366,37 @@ export class WallyService {
       await redisClient.set(`scheduledCleanup:${userAddress}`, Date.now() + 30 * 24 * 60 * 60 * 1000);
     }
   }
-
+  async wipeUserDataExceptMetadata(userAddress: string, event: any) {
+    // Delete all user data except minimal metadata
+    await redisClient.del(`userEvents:${userAddress}`);
+    await redisClient.del(`userMetadata:${userAddress}`);
+    // Optionally, log the event
+    await this.auditLog('UserDataWiped', { userAddress, event });
+  }
+  
+  const router = express.Router();
+  
+  // Health check route (no auth)
+  router.get('/health', (req, res) => {
+      res.status(200).json({ status: 'ok', timestamp: Date.now() });
+  });
+  
+  // All routes below require authentication
+  router.use(authenticate);
+  
+  // Wallet routes
+  router.get('/:id', getWalletInfo);
+  router.post('/', createWallet);
+  router.put('/:id', updateWallet);
+  router.delete('/:id', deleteWallet);
+  
+  // Test route (optional)
+  router.get('/', (req, res) => {
+      res.status(200).json({ message: 'Wallet routes are working!' });
+  });
+  
+  export default router;
+  
   /**
    * On renew, clear any pending deletion timers.
    */

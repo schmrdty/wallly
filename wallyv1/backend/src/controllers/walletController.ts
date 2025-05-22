@@ -2,9 +2,22 @@ import { Request, Response } from 'express';
 import { WalletService } from '../services/walletService';
 import { WallyService } from '../services/wallyService';
 import { logError } from '../infra/mon/logger';
+import Joi from 'joi';
 
 const walletService = new WalletService();
 const wallyService = new WallyService();
+
+const createWalletSchema = Joi.object({
+    userId: Joi.string().required(),
+    userEmail: Joi.string().email().required(),
+    type: Joi.string().valid('coinbase', 'other').required(),
+});
+
+const updateWalletSchema = Joi.object({
+    userEmail: Joi.string().email(),
+    type: Joi.string().valid('coinbase', 'other'),
+    // Add other fields that can be updated here
+});
 
 export const getWalletInfo = async (req: Request, res: Response) => {
     try {
@@ -26,6 +39,9 @@ export const getWalletInfo = async (req: Request, res: Response) => {
 };
 
 export const createWallet = async (req: Request, res: Response) => {
+    const { error } = createWalletSchema.validate(req.body);
+    if (error) return res.status(400).json({ message: error.details[0].message });
+
     try {
         const { userId, userEmail, type } = req.body;
         let wallet;
@@ -36,11 +52,14 @@ export const createWallet = async (req: Request, res: Response) => {
         }
         res.status(201).json({ wallet });
     } catch (error: any) {
+        logError(`Error creating wallet: ${error}`);
         res.status(500).json({ message: error.message || 'Failed to create wallet' });
     }
 };
 
 export const updateWallet = async (req: Request, res: Response) => {
+    const { error } = updateWalletSchema.validate(req.body);
+    if (error) return res.status(400).json({ message: error.details[0].message });
     try {
         const walletId = req.params.id;
         const walletData = req.body;

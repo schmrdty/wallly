@@ -1,6 +1,6 @@
 import { sendInAppNotification } from './notificationServices';
-import { Permission } from '../../db/models';
-import redisClient from '../../db/redisClient';
+import { Permission } from '../db/models';
+import redisClient from '../db/redisClient';
 
 export async function checkExpiriesAndNotify() {
   const now = Date.now();

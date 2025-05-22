@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Token } from '../../db/index'; // PostgreSQL Token model
+import { Token } from '../db/index'; // PostgreSQL Token model
 import { logError } from '../infra/monitoring/logger
 import { levenshtein } from '../utils/levenshtein';
 import { getTokenFromPostgres } from './postgresService';

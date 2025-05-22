@@ -10,6 +10,22 @@ const TransferForm: React.FC = () => {
     const [recipient, setRecipient] = useState('');
     const [allowEntireWallet, setAllowEntireWallet] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
+    const [tokenWarning, setTokenWarning] = useState('');
+
+    const handleTokenInput = async (value: string) => {
+        setTokenAddress(value);
+        if (value.startsWith('0x') && value.length === 42) {
+            const token = await fuzzyFindTokenByInput(value, user.tokens);
+            if (!token) {
+                setTokenWarning('Token not found in list. You can proceed, but please double-check the address.');
+                logger.warn('Token not found in list', { userId: user.id, input: value });
+            } else {
+                setTokenWarning('');
+            }
+        } else {
+            setTokenWarning('');
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -44,8 +60,13 @@ const TransferForm: React.FC = () => {
         <form onSubmit={handleSubmit}>
             <label>
                 Token Address:
-                <input value={tokenAddress} onChange={e => setTokenAddress(e.target.value)} required />
+                <input
+                    value={tokenAddress}
+                    onChange={e => handleTokenInput(e.target.value)}
+                    required
+                />
             </label>
+            {tokenWarning && <div style={{ color: 'orange' }}>{tokenWarning}</div>}
             <label>
                 Amount:
                 <input value={amount} onChange={e => setAmount(e.target.value)} required />

@@ -61,8 +61,8 @@ Create a `.env` file in the root of the backend directory and add the necessary 
 - Implement wallet controller logic in `controllers/walletController.ts`.
 - Implement wallet routes in `routes/walletRoutes.ts`.
 - Implement wallet service functions in `services/walletService.ts`.
-- Implement database client logic in `infrastructure/database/dbClients.ts`.
-- Implement logging logic in `infrastructure/monitoring/logger.ts`.
+- Implement database client logic in `infra/database/dbClients.ts`.
+- Implement logging logic in `infra/mon/logger.ts`.
 - Implement utility functions in `utils/helpers.ts`.
 
 ## License
