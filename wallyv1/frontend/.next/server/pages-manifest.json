@@ -1,0 +1,12 @@
+{
+  "/_app": "pages/_app.js",
+  "/Home": "pages/Home.js",
+  "/_error": "pages/_error.js",
+  "/Dashboard": "pages/Dashboard.js",
+  "/Instructions": "pages/Instructions.js",
+  "/Settings": "pages/Settings.js",
+  "/": "pages/index.js",
+  "/SplashPage": "pages/SplashPage.js",
+  "/ResultPage": "pages/ResultPage.js",
+  "/_document": "pages/_document.js"
+}

@@ -1,50 +1,47 @@
 import React, { useEffect, useState } from 'react';
 import '../styles/styles.css';
+import '../styles/dashboard.css';
+import '../styles/instructions.css';
+import '../styles/settings.css';
 import type { AppProps } from 'next/app';
 import { logger } from '../src/utils/logger';
+import Head from 'next/head';
+import SplashPage from '../src/components/SplashPage';
+import { AppProvider } from '../src/context/AppContext';
+import { AuthKitProvider } from '@farcaster/auth-kit';
 
-function SplashPage({ onComplete }: { onComplete: () => void }) {
-  const [daysLeft, setDaysLeft] = useState<number | null>(null);
+// Extend the Window interface to include 'farcaster'
+declare global {
+  interface Window {
+    farcaster?: any;
+  }
+}
 
-  useEffect(() => {
-    // Example: Fetch contract info securely from your backend API
-    fetch('/api/contract-expiry', { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => {
-      if (data.expiry) {
-        const expiryDate = new Date(data.expiry);
-        const now = new Date();
-        const diff = Math.ceil(
-        (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-        );
-        setDaysLeft(diff);
-      }
-      })
-      .catch(() => setDaysLeft(null));
-    const contractExpiry = localStorage.getItem('wally_contract_expiry');
-    if (contractExpiry) {
-      const expiryDate = new Date(contractExpiry);
-      const now = new Date();
-      const diff = Math.ceil(
-        (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: any, info: any) {
+    logger.error('App ErrorBoundary caught error', { error, info });
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="splash">
+          <h1>Something went wrong.</h1>
+          <p>Try refreshing the page or contact support.</p>
+        </div>
       );
-      setDaysLeft(diff);
     }
-    // Simulate loading
-    setTimeout(onComplete, 2000);
-  }, [onComplete]);
-
-  return (
-    <div className="splash">
-      <h1>Welcome to Wally!</h1>
-      {daysLeft !== null && (
-        <p>
-          Your contract expires in <strong>{daysLeft}</strong> days.
-        </p>
-      )}
-      <p>Loading...</p>
-    </div>
-  );
+    return this.props.children;
+  }
 }
 
 function MyApp({ Component, pageProps }: AppProps) {
@@ -60,16 +57,22 @@ function MyApp({ Component, pageProps }: AppProps) {
       setIsMiniApp(mini);
 
       if (mini) {
-        import('@farcaster/frame-sdk').then(({ sdk }) => {
+        import('@farcaster/auth-kit').then((authKitModule) => {
+          // Replace 'sdk' with the correct export from the module.
+          // For example, if the SDK is the default export:
+          const sdk = authKitModule.default || authKitModule.sdk || authKitModule;
           if (window.farcaster) {
             window.farcaster.sdk = sdk;
-            sdk.init({
-              appName: 'Wally the Wallet Watcher',
-              appVersion: '1.0.0',
-              appUrl: 'https://wally.schmidtiest.xyz',
-              splashImageUrl: 'https://wally.schmidtiest.xyz/logo.png',
-              splashBackgroundColor: '#f5f0ec',
-            });
+            // If sdk.init does not exist, configure the SDK as per its documentation or remove this block.
+            // Example: If configuration is done via constructor or another method, use that instead.
+            // Remove or update the following lines as appropriate:
+             sdk.init({
+               appName: 'Wally the Wallet Watcher',
+               appVersion: '1.0.0',
+               appUrl: 'https://wally.schmidtiest.xyz',
+               splashImageUrl: 'https://wally.schmidtiest.xyz/logo.png',
+               splashBackgroundColor: '#f5f0ec',
+             });
             sdk.actions.ready();
             sdk.actions.setTitle('Wally the Wallet Watcher');
             sdk.actions.setImage('https://wally.schmidtiest.xyz/logo.png');
@@ -79,8 +82,14 @@ function MyApp({ Component, pageProps }: AppProps) {
         });
       }
     }
+    // Global error handler for unhandled promise rejections
+    const handler = (event: PromiseRejectionEvent) => {
+      logger.error('Unhandled promise rejection', { reason: event.reason });
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
   }, []);
-  
+
   const userId = pageProps?.user?.id;
   useEffect(() => {
     logger.info('User logged in', { userId });
@@ -88,18 +97,40 @@ function MyApp({ Component, pageProps }: AppProps) {
     logger.error('Failed to fetch data', { error: 'timeout', userId });
     logger.debug('Debugging details', { foo: 'bar', userId });
   }, [userId]);
-  // -------------------------------------------
 
-  return showSplash ? (
-    <SplashPage onComplete={() => setShowSplash(false)} />
-  ) : (
+  // Add your config (replace with your actual values)
+  const authKitConfig = {
+    domain: 'wally.schmidtiest.xyz',
+    siweUri: 'https://wally.schmidtiest.xyz/login',
+    rpcUrl: process.env.NEXT_PUBLIC_RPC_URL,
+    relay: 'https://relay.farcaster.xyz',
+    // version: 'v1', // optional
+  };
+
+  return (
     <>
-      {isMiniApp && (
-        <div className="mini-app-banner">
-          <strong>Mini App Mode:</strong> It's Wally the Mini App.
-        </div>
-      )}
-      <Component {...pageProps} isMiniApp={isMiniApp} />
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Wally the Wallet Watcher</title>
+      </Head>
+      <ErrorBoundary>
+        <AuthKitProvider config={authKitConfig}>
+          <AppProvider>
+            {showSplash ? (
+              <SplashPage onComplete={() => setShowSplash(false)} />
+            ) : (
+              <>
+                {isMiniApp && (
+                  <div className="mini-app-banner">
+                    <strong>Mini App Mode:</strong> It's Wally the Mini App.
+                  </div>
+                )}
+                <Component {...pageProps} isMiniApp={isMiniApp} />
+              </>
+            )}
+          </AppProvider>
+        </AuthKitProvider>
+      </ErrorBoundary>
     </>
   );
 }

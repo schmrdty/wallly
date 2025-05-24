@@ -1,6 +1,6 @@
 import React from 'react';
 import { api } from '../utils/api';
-import { logger } from '../src/utils/logger';
+import { logger } from '../utils/logger';
 
 const RenewButton = ({ userId, disabled }: { userId: string; disabled?: boolean }) => {
   const handleRenew = async () => {

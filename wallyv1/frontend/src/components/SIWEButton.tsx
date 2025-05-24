@@ -1,7 +1,10 @@
 import React from 'react';
-import PropTypes from 'prop-types';
 
-const SIWEButton = ({ onSuccess }) => {
+export interface SIWEButtonProps {
+  onSuccess: (user: any) => void;
+}
+
+const SIWEButton: React.FC<SIWEButtonProps> = ({ onSuccess }) => {
   const handleSignIn = async () => {
     try {
       const res = await fetch('/api/siwe/start', { method: 'POST' });
@@ -15,18 +18,14 @@ const SIWEButton = ({ onSuccess }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, signature }),
       });
-      if (verifyRes.ok) onSuccess();
-      else console.error('Failed to verify SIWE signature');
+      if (verifyRes.ok) {
+        const user = await verifyRes.json();
+        onSuccess(user);
+      } else console.error('Failed to verify SIWE signature');
     } catch (error) {
       console.error('Error:', error);
     }
   };
-
   return <button onClick={handleSignIn}>Sign In With Ethereum</button>;
 };
-
-SIWEButton.propTypes = {
-  onSuccess: PropTypes.func.isRequired,
-};
-
 export default SIWEButton;

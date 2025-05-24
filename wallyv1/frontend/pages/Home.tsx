@@ -1,14 +1,17 @@
 import React, { useEffect } from 'react';
 import Auth from '../src/components/Auth';
-import Link from 'next/link';
-import SIWEButton from '../src/components/SIWEButton';
 import { FarcasterSignIn } from '../src/components/FarcasterSignIn';
+import SIWEButton from '../src/components/SIWEButton';
 import { logger } from '../src/utils/logger';
 import { useAuth } from '../src/hooks/useAuth';
+import { useRouter } from 'next/router';
+import { Disclaimer } from '../src/components/Disclaimer';
+import { HomeNav } from '../src/components/HomeNav';
 
 const Home = () => {
-  const { user } = useAuth();
+  const { user, signInWithFarcaster, signInWithEthereum } = useAuth();
   const userId = user?.id;
+  const router = useRouter();
 
   useEffect(() => {
     if (userId) {
@@ -16,35 +19,41 @@ const Home = () => {
     }
   }, [userId]);
 
+  const handleFarcasterSuccess = (user: any) => {
+    signInWithFarcaster(user);
+    logger.info('Farcaster sign-in successful', { userId: user.id });
+    router.push('/Dashboard');
+  };
+
+  const handleFarcasterError = () => {
+    router.push('/');
+  };
+
+  const handleSIWESuccess = (user: any) => {
+    signInWithEthereum(user);
+    logger.info('SIWE sign-in successful', { userId: user.id });
+    router.push('/Dashboard');
+  };
+
   return (
     <div className="container">
       <h1>Welcome to Wally the Wallet Watcher</h1>
       <Auth />
       <p>Automate non-custodial wallet monitoring and transfers.</p>
-      <FarcasterSignIn />
-      <nav>
-        <Link href="/Instructions">Instructions</Link>
-        <Link href="/SiWE">SiWE</Link>
-        <Link href="/Share">Share</Link>
-        <Link href="/Feedback">Feedback</Link>
-        <Link href="/Privacy">Privacy</Link>
-      </nav>
-      <div>
-        <strong>Disclaimer:</strong>
-        <p>Wally is a non-custodial wallet automation tool</p>
-        <strong>Always confirm entries in all fields</strong>
-        <br />
-        <strong>before proceeding with any transaction/s.</strong>
-        <br />
-        <strong>Wally does not store your private keys or sensitive information.</strong>
-        <p>Wally's developer is not responsible for any losses or damages</p>
-        <p>resulting from your interaction with Wally.</p>
-        <p>By signing in with your Farcaster or </p>
-        <p>Ethereum account and using Wally and/or the underlying technology</p>
-        <p>you acknowledge that you have read and understood the terms of service.</p>
-        <p>Wally is not a financial advisor and does not provide financial advice.</p>
-        <p>Wally is not affiliated with Farcaster or Ethereum.</p>
-      </div>
+      <br />
+      <p>While in Beta, Wally is Whitelisted; contact @schmidtiest.base.eth for more info.</p>
+      <p>Sign in with:</p>
+      <FarcasterSignIn onSuccess={handleFarcasterSuccess} onError={handleFarcasterError} />
+      {user?.authProvider === 'farcaster' && (
+        <p>Signed in with Farcaster</p>
+      )}
+      <p>or</p>
+      <SIWEButton onSuccess={handleSIWESuccess} />
+      {user?.authProvider === 'ethereum' && (
+        <p>Signed in with Ethereum</p>
+      )}
+      <HomeNav />
+      <Disclaimer />
       <p>Wally the Wallet Watcher 2025</p>
       <p>Brought to you by @schmidtiest.eth</p>
     </div>
@@ -52,3 +61,4 @@ const Home = () => {
 };
 
 export default Home;
+

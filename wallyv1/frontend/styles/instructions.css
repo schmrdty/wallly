@@ -1,0 +1,19 @@
+.instructions-container {
+  background: var(--color-card-light);
+  border-radius: var(--border-radius);
+  padding: 2rem;
+  margin: 2rem auto;
+  max-width: 650px;
+  font-size: 1.15rem;
+}
+
+.instructions-container ol, .instructions-container ul {
+  margin-left: 1.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .instructions-container {
+    background: var(--color-card-dark);
+    color: var(--color-text-dark);
+  }
+}
