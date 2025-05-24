@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useEvents } from '../hooks/useEvents';
+import { EventItem, useEvents } from '../hooks/useEvents';
 
-const EventFeed: React.FC = () => {
+interface EventFeedProps {
+    userId: string;
+}
+
+const EventFeed: React.FC<EventFeedProps> = ({ userId }) => {
     const { events, subscribeToEvents } = useEvents();
     const [loading, setLoading] = useState(true);
 
@@ -23,16 +27,13 @@ const EventFeed: React.FC = () => {
     }
 
     return (
-        <div>
-            <h2>Event Feed</h2>
-            <ul>
-                {events.map((event, index) => (
-                    <li key={index}>
-                        <strong>{event.type}</strong>: {event.data} at {new Date(event.timestamp).toLocaleString()}
-                    </li>
-                ))}
-            </ul>
-        </div>
+        <ul>
+            {events.map((event: EventItem, index: number) => (
+                <li key={index}>
+                    <strong>{event.type}</strong>: {event.data} at {new Date(event.timestamp).toLocaleString()}
+                </li>
+            ))}
+        </ul>
     );
 };
 

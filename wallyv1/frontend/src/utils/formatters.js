@@ -2,12 +2,11 @@ export const formatCurrency = (amount, currencySymbol = '$') => {
     return `${currencySymbol}${parseFloat(amount).toFixed(2)}`;
 };
 export function formatDate(date) {
+    /** @type {Intl.DateTimeFormatOptions} */
     const options = { year: "numeric", month: "long", day: "numeric" };
-    // Check if the date is in milliseconds
     if (typeof date === 'number') {
         date = new Date(date);
     } else if (typeof date === 'string') {
-        // If the date is a string, try to parse it
         date = new Date(Date.parse(date));
     }
     return new Date(date).toLocaleDateString(undefined, options);

@@ -13,13 +13,19 @@ const ExportData: React.FC = () => {
         setError(null);
         setSuccess(null);
 
+        if (!user?.id) {
+            setError('User ID not found.');
+            setLoading(false);
+            return;
+        }
+
         try {
-            const response = await exportUserData(user?.id);
+            const response = await exportUserData(user.id);
             const blob = new Blob([response.data], { type: 'text/csv' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `user_data_${user?.id || 'export'}.csv`;
+            a.download = `user_data_${user.id}.csv`;
             document.body.appendChild(a);
             a.click();
             a.remove();

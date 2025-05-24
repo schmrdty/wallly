@@ -13,22 +13,35 @@ const defaultOptions: LoggerOptions = {
   redactKeys: ['password', 'privateKey', 'secret', 'token'],
 };
 
-function shouldLog(level: LogLevel, currentLevel: LogLevel) {
-  const order = ['debug', 'info', 'warn', 'error'];
-  return order.indexOf(level) >= order.indexOf(currentLevel);
+/**
+ * Utility: Check if a value is a plain object.
+ */
+function isPlainObject(val: any): val is Record<string, any> {
+  return !!val && typeof val === 'object' && !Array.isArray(val);
 }
 
+/**
+ * Utility: Redact sensitive keys in an object.
+ */
 function redact(obj: any, keys: string[]): any {
-  if (!obj || typeof obj !== 'object') return obj;
-  const clone = Array.isArray(obj) ? [...obj] : { ...obj };
+  if (!isPlainObject(obj)) return obj;
+  const clone: Record<string, any> = { ...obj };
   for (const key of Object.keys(clone)) {
     if (keys.includes(key)) {
       clone[key] = '[REDACTED]';
-    } else if (typeof clone[key] === 'object') {
+    } else if (isPlainObject(clone[key])) {
       clone[key] = redact(clone[key], keys);
     }
   }
   return clone;
+}
+
+/**
+ * Utility: Should log at this level?
+ */
+function shouldLog(level: LogLevel, currentLevel: LogLevel) {
+  const order = ['debug', 'info', 'warn', 'error'];
+  return order.indexOf(level) >= order.indexOf(currentLevel);
 }
 
 export class Logger {
@@ -71,6 +84,24 @@ export class Logger {
   warn(...args: any[]) { this.log('warn', ...args); }
   error(...args: any[]) { this.log('error', ...args); }
 
+  /**
+   * Log a contract event in a structured way.
+   * @param eventName The event name (should match contract event).
+   * @param eventData The event data object.
+   */
+  contractEvent(eventName: string, eventData: Record<string, any>) {
+    this.info(`[CONTRACT EVENT] ${eventName}`, redact(eventData, this.redactKeys));
+  }
+
+  /**
+   * Log a contract error with context.
+   * @param errorName The error name (should match contract error).
+   * @param context Additional context for debugging.
+   */
+  contractError(errorName: string, context?: Record<string, any>) {
+    this.error(`[CONTRACT ERROR] ${errorName}`, context ? redact(context, this.redactKeys) : undefined);
+  }
+
   // Explicit method for logging sensitive data (use with caution)
   sensitive(level: LogLevel, ...args: any[]) {
     if (!shouldLog(level, this.level)) return;
@@ -80,3 +111,10 @@ export class Logger {
 
 // Singleton instance for app-wide use
 export const logger = new Logger();
+
+export function logError(msg: string) {
+  if (typeof window !== "undefined") {
+    // Optionally send to a logging service
+    console.error(msg);
+  }
+}
