@@ -2,6 +2,9 @@ import React from 'react';
 import RenewButton from '../src/components/RenewButton';
 import { useSettingsForm } from '../src/hooks/useSettingsForm';
 import { SettingsStatus } from '../src/components/SettingsStatus';
+import styles from '../styles/Settings.module.css';
+import { tryDetectMiniAppClient } from '../src/utils/miniAppDetection';
+import { MiniAppBanner } from '../src/components/MiniAppBanner';
 
 const Settings = () => {
   const {
@@ -19,8 +22,19 @@ const Settings = () => {
     user
   } = useSettingsForm();
 
+  const isMiniApp = isMiniAppClient();
+  
+function isMiniAppClient() {
+  try {
+    return tryDetectMiniAppClient();
+  } catch {
+    return false;
+  }
+}
+
   return (
-    <div className="settings-container">
+    <div className={styles.settingsContainer}>
+      {isMiniApp && <MiniAppBanner />}
       <h1>Settings</h1>
       <label>
         <input

@@ -85,6 +85,19 @@ export const WalletEventList: React.FC<{ events: WalletEvent[] }> = ({ events })
   </ul>
 );
 
+// Add a helper to display token balances and minBalances for preview
+function renderTokenPreview(tokenList: string[], minBalances: string[]) {
+  return (
+    <ul>
+      {tokenList.map((token, idx) => (
+        <li key={token}>
+          Token: {token} | Min Balance: {minBalances[idx] || '0'}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const WalletWatcher: React.FC = () => {
   const { walletAddress, isConnected } = useWallet();
   const [events, setEvents] = useState<WalletEvent[]>([]);
@@ -221,6 +234,7 @@ useEffect(() => {
           Withdrawal Address: {permission.withdrawalAddress}<br />
           Expires: {formatDate(permission.expiresAt * 1000)}<br />
           Allowed Tokens: {permission.tokenList.join(", ")}
+          {permission.tokenList && permission.minBalances && renderTokenPreview(permission.tokenList, permission.minBalances)}
         </div>
       )}
       {session && session.active && (

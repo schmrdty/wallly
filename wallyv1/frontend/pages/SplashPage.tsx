@@ -3,6 +3,9 @@ import { useRouter } from 'next/router';
 import { useAuth } from '../src/hooks/useAuth';
 import { SplashSpinner } from '../src/components/SplashSpinner';
 import { SplashLogo } from '../src/components/SplashLogo';
+import { tryDetectMiniAppClient } from '../src/utils/miniAppDetection';
+import { MiniAppBanner } from '../src/components/MiniAppBanner';
+import styles from '../styles/SplashPage.module.css';
 
 const SplashPage = () => {
   const router = useRouter();
@@ -14,15 +17,11 @@ const SplashPage = () => {
     }
   }, [authLoading, router]);
 
+  const isMiniApp = tryDetectMiniAppClient();
+
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: '#f7fafc'
-    }}>
+    <div className={styles.container}>
+      {isMiniApp && <MiniAppBanner />}
       <SplashLogo />
       <SplashSpinner />
     </div>

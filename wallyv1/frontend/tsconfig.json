@@ -34,7 +34,14 @@
     "pages/Dashboard.tsx",
     "pages/Settings.tsx",
     "pages/Instructions.tsx",
-    "pages/Home.tsx"
+    "pages/SplashPage.tsx",
+    "pages/Home.tsx",
+    "pages/Transfer.tsx",
+    "pages/Wallets.tsx",
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.d.ts",
   ],
   "exclude": [
     "node_modules",

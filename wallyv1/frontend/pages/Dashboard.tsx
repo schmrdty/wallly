@@ -8,8 +8,9 @@ import { useRouter } from 'next/router';
 import { DashboardUserInfo } from '../src/components/DashboardUserInfo';
 import { DashboardSignOutButtons } from '../src/components/DashboardSignOutButtons';
 import { DashboardNavButtons } from '../src/components/DashboardNavButtons';
-import '../styles/dashboard.css';
-
+import styles from '../styles/Dashboard.module.css';
+import { tryDetectMiniAppClient } from '@/utils/miniAppDetection'; 
+import { MiniAppBanner } from '../src/components/MiniAppBanner'; // Import the MiniAppBanner component
 
 
 function Dashboard() {
@@ -21,17 +22,21 @@ function Dashboard() {
     const [actionStatus, setActionStatus] = useState<string | null>(null);
     const router = useRouter();
 
+    function isMiniAppRequest() {
+  return tryDetectMiniAppClient() || window.location.pathname.startsWith('/mini');
+}
     useEffect(() => {
         if ((!authLoading && !userId) || (!sessionLoading && !isValid)) {
             router.replace('/');
         }
     }, [authLoading, userId, sessionLoading, isValid, router]);
 
-        <div>className="dashboard"</div>
+    const isMiniApp = tryDetectMiniAppClient(); // Detect if it's a mini app
+
     if (!userId || !isValid) return null;
 
     return (
-        <div className="dashboard">
+        <div className={styles.dashboard}>
             <h1>Dashboard</h1>
             <DashboardUserInfo user={user} isValid={isValid} />
             <DashboardSignOutButtons user={user} logoutUser={logoutUser} />
@@ -40,6 +45,7 @@ function Dashboard() {
             {userId && <Notifications userId={userId} />}
             <TransferForm />
             {userId && <EventFeed userId={userId} />}
+            {isMiniApp && <MiniAppBanner />} {/* Show the banner if it's a mini app */}
         </div>
     );
 }

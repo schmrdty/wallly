@@ -1,5 +1,5 @@
 import axios from "axios";
-import { logError, logInfo } from "../src/infra/mon/logger";
+import { logError, logInfo } from "../infra/mon/logger";
 
 export async function sendWarpcastNotification(
   tokens: string[],
