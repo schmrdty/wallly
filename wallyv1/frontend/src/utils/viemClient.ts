@@ -3,33 +3,24 @@ import wallyv1Abi from '../abis/wallyv1.json';
 import { readContract } from 'viem/actions';
 import { getRpcUrl } from './rpcService';
 
-// You can expand this to support multiple chains if needed
-const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
 const chainId = 8453; // Base Mainnet
 const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
-
-if (!rpcUrl) {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('NEXT_PUBLIC_RPC_URL is not set. Please set it in your .env file for production use.');
-  } else {
-    // eslint-disable-next-line no-console
-    console.warn('No NEXT_PUBLIC_RPC_URL provided. Viem will use a public endpoint, which is not recommended for production.');
-  }
-}
 
 if (!contractAddress) {
   throw new Error('NEXT_PUBLIC_CONTRACT_ADDRESS is not set. Please set it in your .env file.');
 }
+
+const rpcUrl = getRpcUrl();
 
 export const viemClient = createPublicClient({
   chain: {
     id: chainId,
     name: 'Base Mainnet',
     nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    rpcUrls: { default: { http: [rpcUrl!] } },
+    rpcUrls: { default: { http: [rpcUrl] } },
     blockExplorers: { default: { name: 'Basescan', url: 'https://basescan.org' } },
   },
-  transport: http(getRpcUrl()),
+  transport: http(rpcUrl),
 });
 
 // Contract instance for WallyWatcherV1

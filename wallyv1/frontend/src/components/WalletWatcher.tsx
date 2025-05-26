@@ -99,7 +99,7 @@ function renderTokenPreview(tokenList: string[], minBalances: string[]) {
 }
 
 const WalletWatcher: React.FC = () => {
-  const { walletAddress, isConnected } = useWallet();
+  const { walletAddress, balance, isConnected } = useWallet();
   const [events, setEvents] = useState<WalletEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [permission, setPermission] = useState<Permission | null>(null);
@@ -227,6 +227,14 @@ useEffect(() => {
   return (
     <div>
       <h2>Wallet Watcher</h2>
+      {isConnected ? (
+        <div>
+          <p>Wallet Address: {walletAddress}</p>
+          <p>Balance: {balance} ETH</p>
+        </div>
+      ) : (
+        <p>Please connect your wallet.</p>
+      )}
       {permission && (
         <div style={{ marginBottom: 16 }}>
           <strong>Permission Status:</strong><br />

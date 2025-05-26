@@ -1,10 +1,15 @@
 import Head from 'next/head';
-import Home from './Home';
 import { logger } from '../src/utils/logger';
 import { useAuth } from '../src/hooks/useAuth';
 import React from 'react';
+import { GetServerSideProps } from 'next';
+import SplashPage from '../src/components/SplashPage';
 
-export default function IndexPage() {
+export const getServerSideProps: GetServerSideProps = async () => ({
+  props: {}
+});
+
+export default function Index() {
   const { user } = useAuth();
   const userId = user?.id;
 
@@ -59,7 +64,7 @@ export default function IndexPage() {
         <title>Wally the Wallet Watcher</title>
         <meta name="description" content="Automate your wallet with Wally. Select tokens, set minimums, authorize & enjoy." />
       </Head>
-      <Home />
+      <SplashPage />
     </>
   );
 }

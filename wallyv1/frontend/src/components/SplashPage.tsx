@@ -1,51 +1,58 @@
-import React from 'react';
-import Link from 'next/link';
+import React, { useEffect } from 'react';
+import { useRouter } from 'next/router';
+import { useAuth } from '../hooks/useAuth';
+import styles from '../../styles/Home.module.css';
 
-interface SplashPageProps {
-  onComplete: () => void;
-}
+const SplashPage = () => {
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
 
-const SplashPage: React.FC<SplashPageProps> = ({ onComplete }) => {
-    return (
-        <div className="splash-page">
-            <h1>Welcome to Wally the Wallet Watcher</h1>
-            <img src="/splash.png" alt="Wally Logo" />
-            <p>
-                Wally helps you automate non-custodial token transfers securely and efficiently.
-                Get started by following the steps below.
-            </p>
-            <h2>Getting Started</h2>
-            <ol>
-                <li>
-                    <strong>Authenticate:</strong> Log in using your Farcaster account to create a secure session.
-                </li>
-                <li>
-                    <strong>Whitelist:</strong> Wally is currently in closed beta. Please contact @schmidtiest.base.eth for access or info.
-                </li>
-                <li>
-                    <strong>Transfer Tokens:</strong> Use the Transfer Form & built in validator to send tokens to your desired recipient.
-                </li>
-                <li>
-                    <strong>Manage Sessions:</strong> View and revoke active sessions for enhanced security.
-                </li>
-                <li>
-                    <strong>Monitor Events:</strong> Track real-time updates on your transactions in the Event Feed.
-                </li>
-                <li>
-                    <strong>Export Data:</strong> Download your Wally transaction history for your records.
-                </li>
-            </ol>
-            <h2>Safety Tips</h2>
-            <ul>
-                <li>Double-check recipient addresses before confirming a transfer.</li>
-                <li>Keep your Farcaster credentials secure and private.</li>
-                <li>Regularly review and revoke unused sessions.</li>
-            </ul>
-            <Link href="/instructions" className="btn">
-                View Detailed Instructions
-            </Link>
+  useEffect(() => {
+    // Redirect to dashboard if already authenticated
+    if (isAuthenticated) {
+      router.replace('/dashboard');
+    }
+  }, [isAuthenticated, router]);
+
+  return (
+    <div className={styles.container}>
+      <main className={styles.main}>
+        <h1 className={styles.title}>
+          Welcome to Wally the Wallet Watcher
+        </h1>
+
+        <p className={styles.description}>
+          Automate non-custodial wallet monitoring and transfers
+        </p>
+
+        <div className={styles.grid}>
+          <div 
+            className={styles.card}
+            onClick={() => router.push('/Home')}
+            style={{ cursor: 'pointer' }}
+          >
+            <h2>Get Started &rarr;</h2>
+            <p>Sign in to start using Wally.</p>
+          </div>
+
+          <a
+            href="https://github.com/schmidtiest/wallly"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.card}
+          >
+            <h2>Documentation &rarr;</h2>
+            <p>Learn more about Wally's features.</p>
+          </a>
         </div>
-    );
-}
+      </main>
+
+      <footer className={styles.footer}>
+        <p>Wally the Wallet Watcher 2025</p>
+        <p>Brought to you by @schmidtiest.eth</p>
+      </footer>
+    </div>
+  );
+};
 
 export default SplashPage;

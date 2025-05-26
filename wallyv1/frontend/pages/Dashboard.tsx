@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../src/hooks/useAuth';
-import { useSession } from '../src/hooks/useSession';
 import EventFeed from '../src/components/EventFeed';
 import { Notifications } from '../src/components/Notifications';
 import TransferForm from '../src/components/TransferForm';
@@ -9,43 +8,38 @@ import { DashboardUserInfo } from '../src/components/DashboardUserInfo';
 import { DashboardSignOutButtons } from '../src/components/DashboardSignOutButtons';
 import { DashboardNavButtons } from '../src/components/DashboardNavButtons';
 import styles from '../styles/Dashboard.module.css';
-import { tryDetectMiniAppClient } from '@/utils/miniAppDetection'; 
-import { MiniAppBanner } from '../src/components/MiniAppBanner'; // Import the MiniAppBanner component
-
+import { tryDetectMiniAppClient } from '@/utils/miniAppDetection';
+import { MiniAppBanner } from '../src/components/MiniAppBanner';
+import { ThemeToggle } from '../src/components/ThemeToggle';
 
 function Dashboard() {
     const { user, loading: authLoading, logoutUser } = useAuth();
     const userId = user?.id;
-    const {
-        loading: sessionLoading, error: sessionError, isValid,
-    } = useSession();
-    const [actionStatus, setActionStatus] = useState<string | null>(null);
     const router = useRouter();
 
-    function isMiniAppRequest() {
-  return tryDetectMiniAppClient() || window.location.pathname.startsWith('/mini');
-}
     useEffect(() => {
-        if ((!authLoading && !userId) || (!sessionLoading && !isValid)) {
+        if (!authLoading && !userId) {
             router.replace('/');
         }
-    }, [authLoading, userId, sessionLoading, isValid, router]);
+    }, [authLoading, userId, router]);
 
-    const isMiniApp = tryDetectMiniAppClient(); // Detect if it's a mini app
+    const isMiniApp = tryDetectMiniAppClient();
 
-    if (!userId || !isValid) return null;
+    if (!userId) return null;
 
     return (
-        <div className={styles.dashboard}>
-            <h1>Dashboard</h1>
-            <DashboardUserInfo user={user} isValid={isValid} />
-            <DashboardSignOutButtons user={user} logoutUser={logoutUser} />
-            <DashboardNavButtons router={router} />
-            {actionStatus && <div className="action-status">{actionStatus}</div>}
-            {userId && <Notifications userId={userId} />}
-            <TransferForm />
-            {userId && <EventFeed userId={userId} />}
-            {isMiniApp && <MiniAppBanner />} {/* Show the banner if it's a mini app */}
+        <div className={styles.container}>
+            <ThemeToggle />
+            <div className={styles.dashboard}>
+                <h1>Dashboard</h1>
+                <DashboardUserInfo user={user} isValid={true} />
+                <DashboardSignOutButtons user={user} logoutUser={logoutUser} />
+                <DashboardNavButtons router={router} />
+                {userId && <Notifications userId={userId} />}
+                <TransferForm />
+                {userId && <EventFeed userId={userId} />}
+                {isMiniApp && <MiniAppBanner />}
+            </div>
         </div>
     );
 }

@@ -5,6 +5,7 @@ import { SettingsStatus } from '../src/components/SettingsStatus';
 import styles from '../styles/Settings.module.css';
 import { tryDetectMiniAppClient } from '../src/utils/miniAppDetection';
 import { MiniAppBanner } from '../src/components/MiniAppBanner';
+import { ThemeToggle } from '../src/components/ThemeToggle';
 
 const Settings = () => {
   const {
@@ -33,7 +34,8 @@ function isMiniAppClient() {
 }
 
   return (
-    <div className={styles.settingsContainer}>
+    <div className={styles.container}>
+      <ThemeToggle />
       {isMiniApp && <MiniAppBanner />}
       <h1>Settings</h1>
       <label>
