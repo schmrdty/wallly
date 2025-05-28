@@ -1,10 +1,13 @@
+"use client";
+
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import SplashSpinner from '@/components/SplashSpinner';
 
 const SplashPage = () => (
-  <div>
+  <div className="container">
     <SplashSpinner />
-    {/* ...splashy splashy splash... */}
+    {/* ... */}
   </div>
 );
 

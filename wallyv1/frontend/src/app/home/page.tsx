@@ -1,20 +1,21 @@
+"use client";
 import React, { useEffect } from 'react';
-import Auth from '../src/components/Auth';
-import { FarcasterSignIn } from '../src/components/FarcasterSignIn';
-import { logger } from '../src/utils/logger';
-import { useAuth } from '../src/hooks/useAuth';
-import { useRouter } from 'next/router';
-import { InstructionsGettingStarted } from '../src/components/InstructionsGettingStarted';
-import { Disclaimer } from '../src/components/Disclaimer';
-import { HomeNav } from '../src/components/HomeNav';
-import styles from '../styles/Home.module.css';
-import { tryDetectMiniAppClient } from '../src/utils/miniAppDetection';
-import { MiniAppBanner } from '../src/components/MiniAppBanner';
-import { ThemeToggle } from '../src/components/ThemeToggle';
+import { logger } from '@/utils/logger';
+import { useAuth } from '@/hooks/useAuth';
+import { useRouter } from 'next/navigation'; // <-- FIXED
+import { InstructionsGettingStarted } from '@/components/InstructionsGettingStarted';
+import { Disclaimer } from '@/components/Disclaimer';
+import { HomeNav } from '@/components/HomeNav';
+import { tryDetectMiniAppClient } from '@/utils/miniAppDetection';
+import { MiniAppBanner } from '@/components/MiniAppBanner';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { grantPermissions } from '@reown/appkit-experimental/smart-session';
 import { useAppKit } from '@reown/appkit/react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import Link from 'next/link';
+import wallyv1Abi from '@/abis/wallyv1.json';
+import wallyv1MinimalAbi from '@/abis/wallyv1HomeAbi';
+import { sdk } from '@farcaster/frame-sdk';
 
 const Home = () => {
   const { user, signInWithFarcaster, logoutUser, isAuthenticated } = useAuth();
@@ -54,7 +55,7 @@ const Home = () => {
         dAppECDSAPublicKey,
         chainId: 8453, // Base Mainnet
         contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`,
-        abi: [], // Replace with your contract's ABI
+        abi: wallyv1Abi, // Replace with your contract's ABI
         functionName: 'store', // Replace with the function you want to allow
         expiry: Math.floor(Date.now() / 1000) + 24 * 60 * 60, // 24 hours
         userAddress: address as `0x${string}`,
@@ -95,6 +96,42 @@ const Home = () => {
     }
   };
 
+  // Farcaster sign-in
+  const handleFarcasterSignIn = async () => {
+    try {
+      const nonce = Math.random().toString(36).slice(2, 12) + Date.now();
+      const result = await sdk.actions.signIn({ nonce, acceptAuthAddress: true });
+      // You must send result to your backend for verification
+      logger.info('Farcaster SIWF result', result);
+      // Optionally, update user state or redirect
+    } catch (err) {
+      logger.error('Farcaster sign-in failed', err);
+    }
+  };
+
+  // Add Mini App
+  const handleAddMiniApp = async () => {
+    try {
+      await sdk.actions.addMiniApp();
+      logger.info('Mini App added');
+    } catch (err) {
+      logger.error('Add Mini App failed', err);
+    }
+  };
+
+  // Share logic (copy URL or show instructions)
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: 'Wally the Wallet Watcher',
+        url: window.location.href
+      });
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      alert('App URL copied to clipboard!');
+    }
+  };
+
   // Redirect to dashboard if already authenticated
   if (isAuthenticated) {
     router.replace('/dashboard');
@@ -102,11 +139,10 @@ const Home = () => {
   }
 
   return (
-    <div className={styles.container}>
+    <div className="container">
       <ThemeToggle />
       {isMiniApp && <MiniAppBanner />}
       <h1>Welcome to Wally the Wallet Watcher</h1>
-      <Auth />
       <InstructionsGettingStarted />
       <p>Automate non-custodial wallet monitoring and transfers.</p>
       <br />
@@ -114,9 +150,8 @@ const Home = () => {
       <p>Sign in with:</p>
       {!user && (
         <>
-          <FarcasterSignIn onSuccess={handleFarcasterSuccess} onError={handleFarcasterError} />
-          <p>or</p>
-          <button onClick={() => open()}>Sign in with Wallet</button>
+          {/* Only use the AppKit sign-in button */}
+          <appkit-button />
         </>
       )}
       {user && (
@@ -130,6 +165,11 @@ const Home = () => {
           <button onClick={handleGrantPermissions}>Grant Permissions</button>
         </div>
       )}
+      <div className="flex flex-wrap gap-4 my-4 justify-center">
+        <button onClick={handleFarcasterSignIn} className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition">Sign In with Farcaster</button>
+        <button onClick={handleAddMiniApp} className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition">Add Mini App</button>
+        <button onClick={handleShare} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">Share</button>
+      </div>
       <HomeNav />
       <Disclaimer />
       <div style={{ marginTop: 24, fontSize: '0.9em', color: '#888' }}>
@@ -142,4 +182,3 @@ const Home = () => {
 };
 
 export default Home;
-

@@ -1,0 +1,188 @@
+/* Dashboard styles */
+.dashboard {
+  background: var(--color-card-light);
+  border-radius: var(--border-radius);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.07);
+  padding: 2.5rem;
+  margin: 2rem auto;
+  max-width: 700px;
+}
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+/* Instructions styles */
+.instructionsContainer, .instructions-container {
+  background: var(--color-card-light);
+  border-radius: var(--border-radius);
+  padding: 2rem;
+  margin: 2rem auto;
+  max-width: 650px;
+  font-size: 1.15rem;
+}
+.instructionsContainer ol, .instructionsContainer ul,
+.instructions-container ol, .instructions-container ul {
+  margin-left: 1.5rem;
+}
+
+/* Settings styles */
+.settings-container, .settingsContainer, .container.settings {
+  background: var(--color-card-light);
+  border-radius: var(--border-radius);
+  padding: 2rem;
+  margin: 2rem auto;
+  max-width: 600px;
+}
+.settings-container label,
+.settingsContainer label,
+.container.settings label {
+  font-weight: var(--font-bold);
+}
+
+/* Result page styles */
+.resultContainer {
+  background: var(--color-card-light);
+  border-radius: var(--border-radius);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.07);
+  padding: 2rem;
+  margin: 2rem auto;
+  max-width: 500px;
+  text-align: center;
+}
+.resultContainer img {
+  max-width: 120px;
+  margin-bottom: 1.5rem;
+}
+.resultContainer h2 {
+  color: var(--color-primary);
+  font-weight: var(--font-bold);
+}
+
+/* Splash page styles */
+.splashContainer, .splash-container, .container.splash, .container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-light);
+  color: var(--color-primary);
+  font-family: var(--font-main);
+  font-weight: var(--font-bold);
+  text-align: center;
+}
+.logo {
+  max-width: 180px;
+  margin-bottom: 2rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid var(--color-accent);
+}
+.logoContainer {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+.spinnerContainer {
+  display: flex;
+  justify-content: center;
+  margin: 2rem 0;
+}
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: #09f;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg);}
+  100% { transform: rotate(360deg);}
+}
+.splashContainer h1, .container h1 {
+  color: var(--color-primary);
+  font-weight: var(--font-bold);
+  margin-bottom: 1rem;
+}
+.splashContainer p, .container p {
+  font-size: 1.1rem;
+  margin: 0.5rem 0;
+}
+
+/* Terms styles */
+.termsContainer {
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 24px;
+  background: var(--color-card-light, #fff);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.07);
+}
+.termsContainer h1 {
+  color: var(--color-primary, #7c3aed);
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+.termsContainer ul {
+  margin: 1em 0 1em 1.5em;
+  padding: 0;
+}
+.termsContainer li {
+  margin-bottom: 0.5em;
+}
+.termsContainer a {
+  color: var(--color-primary, #7c3aed);
+  text-decoration: underline;
+}
+.termsContainer p {
+  margin-top: 1em;
+}
+
+/* Home styles */
+.homeContainer, .container.home {
+  background: var(--color-card-light);
+  border-radius: var(--border-radius);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.07);
+  padding: 2rem;
+  margin: 2rem auto;
+  max-width: 600px;
+}
+.homeContainer h1, .container.home h1 {
+  font-weight: var(--font-bold);
+  color: var(--color-primary);
+  margin-bottom: 1rem;
+}
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  .dashboard,
+  .instructionsContainer,
+  .instructions-container,
+  .settings-container,
+  .settingsContainer,
+  .container.settings,
+  .resultContainer,
+  .splashContainer,
+  .splash-container,
+  .container.splash,
+  .container,
+  .termsContainer,
+  .homeContainer,
+  .container.home {
+    background: var(--color-card-dark);
+    color: var(--color-text-dark);
+  }
+  .resultContainer h2,
+  .container h2,
+  .splashContainer h2 {
+    color: var(--color-accent);
+  }
+  .logo {
+    background: var(--color-card-dark);
+    border: 4px solid var(--color-primary);
+  }
+}

@@ -1,3 +1,4 @@
+"use client";
 import { useState, useEffect } from "react";
 import { AuthUser } from "../types/user";
 import { authenticateWithFarcaster, logout } from "../utils/api";

@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { useAuth } from '../hooks/useAuth';
-import styles from '../../styles/Home.module.css';
+import { useAuth } from '../../hooks/useAuth';
 
 const SplashPage = () => {
   const router = useRouter();
@@ -15,19 +14,19 @@ const SplashPage = () => {
   }, [isAuthenticated, router]);
 
   return (
-    <div className={styles.container}>
-      <main className={styles.main}>
-        <h1 className={styles.title}>
+    <div className="container">
+      <main className="main">
+        <h1 className="title">
           Welcome to Wally the Wallet Watcher
         </h1>
 
-        <p className={styles.description}>
+        <p className="description">
           Automate non-custodial wallet monitoring and transfers
         </p>
 
-        <div className={styles.grid}>
+        <div className="grid">
           <div 
-            className={styles.card}
+            className="card"
             onClick={() => router.push('/Home')}
             style={{ cursor: 'pointer' }}
           >
@@ -39,7 +38,7 @@ const SplashPage = () => {
             href="https://github.com/schmidtiest/wallly"
             target="_blank"
             rel="noopener noreferrer"
-            className={styles.card}
+            className="card"
           >
             <h2>Documentation &rarr;</h2>
             <p>Learn more about Wally's features.</p>
@@ -47,7 +46,7 @@ const SplashPage = () => {
         </div>
       </main>
 
-      <footer className={styles.footer}>
+      <footer className="footer">
         <p>Wally the Wallet Watcher 2025</p>
         <p>Brought to you by @schmidtiest.eth</p>
       </footer>

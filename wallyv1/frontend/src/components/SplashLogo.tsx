@@ -1,10 +1,9 @@
+'use client';
 import React from 'react';
 import Image from 'next/image';
-import styles from '../../styles/Splash.module.css';
-
 export const SplashLogo = () => {
   return (
-    <div className={styles.logoContainer}>
+    <div className="logo-container">
       <Image 
         src="/logo.png" 
         alt="Wally Logo" 

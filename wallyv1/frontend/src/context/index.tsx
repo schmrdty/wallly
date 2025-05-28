@@ -10,18 +10,18 @@ import { base } from '@reown/appkit/networks';
 const queryClient = new QueryClient();
 
 const metadata = {
-  name: 'Wally the Wallet Watcher',
-  description: 'AppKit Example',
-  url: typeof window !== 'undefined' ? window.location.origin : 'https://wally.schmidtiest.xyz',
-  icons: ['https://wally.schmidtiest.xyz/logo.png'],
+  name: 'Your App Name',
+  description: 'Your App Description',
+  url: typeof window !== 'undefined' ? window.location.origin : 'https://yourdomain.com',
+  icons: ['https://yourdomain.com/icon.png'],
 };
 
 if (projectId) {
   createAppKit({
     adapters: [wagmiAdapter],
     projectId,
-    networks, // This is your array: [mainnet, arbitrum, base, degen, optimism]
-    defaultNetwork: base, // This is fine, as base is in your array
+    networks,
+    defaultNetwork: base,
     metadata,
     features: { analytics: true },
   });
@@ -36,11 +36,14 @@ export default function ContextProvider({
 }) {
   const initialState = cookieToInitialState(config as Config, cookies);
 
-  return WagmiProvider({
-    config: config as Config,
-    initialState,
-    children: (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
-  });
+  // Return WagmiProvider as a function call, wrapped in a fragment for ReactNode compatibility
+  return (
+    <>
+      {WagmiProvider({
+        config: config as Config,
+        initialState,
+        children: <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+      })}
+    </>
+  );
 }

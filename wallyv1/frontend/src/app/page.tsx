@@ -1,18 +1,35 @@
+'use client';
 import Head from 'next/head';
-import { logger } from '../src/utils/logger';
-import { useAuth } from '../src/hooks/useAuth';
+import { logger } from '../utils/logger';
+import { useAuth } from '../hooks/useAuth';
 import React from 'react';
-import { GetServerSideProps } from 'next';
-import SplashPage from '../src/components/SplashPage';
-
-export const getServerSideProps: GetServerSideProps = async () => ({
-  props: {}
-});
-
+import { useRouter } from 'next/navigation';
 export default function Index() {
   const { user } = useAuth();
   const userId = user?.id;
-
+const router = useRouter();
+  const isMiniApp = typeof window !== 'undefined' && window.navigator.userAgent.includes('FarcasterMiniApp');
+  // Redirect to dashboard if user is authenticated
+  React.useEffect(() => {
+    if (userId) {
+      router.replace('/dashboard');
+    }
+  }, [userId, router]);
+  const isMobile = typeof window !== 'undefined' && /Mobi|Android/i.test(window.navigator.userAgent);
+  // Log user actions and API calls
+  React.useEffect(() => {
+    if (isMiniApp) {
+      logger.info('Mini App detected', { userId });
+    } else {
+      logger.info('Web App detected', { userId });
+    }
+    if (isMobile) {
+      logger.info('User is on a mobile device', { userId });
+    } else {
+      logger.info('User is on a desktop device', { userId });
+    }
+    logger.info('Page loaded', { userId });
+  }, [userId, isMiniApp, isMobile]);
   // Only log when userId is available
   React.useEffect(() => {
     if (userId) {
@@ -64,7 +81,6 @@ export default function Index() {
         <title>Wally the Wallet Watcher</title>
         <meta name="description" content="Automate your wallet with Wally. Select tokens, set minimums, authorize & enjoy." />
       </Head>
-      <SplashPage />
     </>
   );
 }

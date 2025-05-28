@@ -9,7 +9,6 @@ if (!projectId) {
   throw new Error('NEXT_PUBLIC_PROJECT_ID is not defined. Please set it in .env.local');
 }
 
-// Explicitly type as required by AppKit
 export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [mainnet, arbitrum, base, degen, optimism];
 
 export const wagmiAdapter = new WagmiAdapter({

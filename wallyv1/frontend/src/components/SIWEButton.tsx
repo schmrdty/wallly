@@ -1,0 +1,1 @@
+// Remove the SIWEButton component, as it is not used and is empty

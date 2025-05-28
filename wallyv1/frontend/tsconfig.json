@@ -7,10 +7,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": "./src",
+    "baseUrl": ".",
     "paths": {
       "@/*": [
-        "*"
+        "src/*"
       ]
     },
     "lib": [
@@ -23,25 +23,20 @@
     "incremental": true,
     "moduleResolution": "node",
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
   "include": [
+    "global.d.ts",
     "src/**/*",
-    "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/TransferForm.tsx",
-    "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/SplashPage.tsx",
-    "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/TokenValidator.tsx",
-    "../../../.wally/.wally/wally-wallet-watcher/frontend/src/hooks/SessionManager.tsx",
-    "pages/Dashboard.tsx",
-    "pages/Settings.tsx",
-    "pages/Instructions.tsx",
-    "pages/SplashPage.tsx",
-    "pages/Home.tsx",
-    "pages/Transfer.tsx",
-    "pages/Wallets.tsx",
-    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
     "**/*.d.ts",
+    ".next/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

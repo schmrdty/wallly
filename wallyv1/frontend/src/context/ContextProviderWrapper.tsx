@@ -1,7 +1,9 @@
 'use client';
-import React from 'react';
+import React, { ReactNode } from 'react';
 import ContextProvider from '@/context';
 
-export default function ContextProviderWrapper({ cookies, children }: { cookies: string | null, children: React.ReactNode }) {
-  return ContextProvider({ cookies, children });
+export default function ContextProviderWrapper({ children }: { children: ReactNode }) {
+    
+  // You can pass cookies here if needed for SSR
+  return ContextProvider({ children, cookies: null });
 }

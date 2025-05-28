@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import type { ExternalProvider } from '@ethersproject/providers';
 import { api } from '../utils/api';
 import { formatDate } from '../utils/formatters';
+import wallyv1DashAbi from '../abis/wallyv1DashAbi';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -22,7 +23,7 @@ const useEvents = () => {
     const [events, setEvents] = useState<EventItem[]>([]);
     const [loading, setLoading] = useState(true);
     const contractRef = useRef<ethers.Contract | null>(null);
-    const filterRef = useRef<ethers.EventFilter | null>(null);
+    const listenersRef = useRef<any[]>([]);
 
     const subscribeToEvents = useCallback(async () => {
         setLoading(true);
@@ -30,35 +31,38 @@ const useEvents = () => {
 
         // On-chain
         if (window.ethereum) {
-            const provider = new ethers.providers.Web3Provider(window.ethereum as ExternalProvider); // <-- Fix here
-            const contractAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
+            const provider = new ethers.providers.Web3Provider(window.ethereum as ExternalProvider);
+            const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
             if (!contractAddress) {
-                throw new Error('REACT_APP_CONTRACT_ADDRESS is not defined');
+                throw new Error('NEXT_PUBLIC_CONTRACT_ADDRESS is not defined');
             }
             const contract = new ethers.Contract(
                 contractAddress,
-                [
-                    "event Transfer(address indexed from, address indexed to, uint256 value)",
-                    // ...other events
-                ],
+                wallyv1DashAbi,
                 provider
             );
             contractRef.current = contract;
-            const filter = contract.filters.Transfer();
-            filterRef.current = filter;
-            const transferListener = (from: string, to: string, value: any, event: any) => {
-                setEvents(prev => [
-                    ...prev,
-                    {
-                        type: 'Transfer',
-                        data: `from: ${from}, to: ${to}, value: ${value.toString()}`,
-                        timestamp: formatDate(new Date())
-                    }
-                ]);
-            };
-            contract.on(filter, transferListener);
-            // Store the listener for cleanup
-            (contractRef.current as any)._transferListener = transferListener;
+            // Listen for minimal ABI events
+            const eventNames = [
+                'MiniAppSessionGranted',
+                'MiniAppSessionRevoked',
+                'PermissionGranted',
+                'PermissionRevoked',
+            ];
+            eventNames.forEach(eventName => {
+                const listener = (...args: any[]) => {
+                    setEvents(prev => [
+                        ...prev,
+                        {
+                            type: eventName,
+                            data: JSON.stringify(args.slice(0, -1)),
+                            timestamp: formatDate(new Date())
+                        }
+                    ]);
+                };
+                contract.on(eventName, listener);
+                listenersRef.current.push({ eventName, listener });
+            });
         }
 
         // Backend events
@@ -75,8 +79,14 @@ const useEvents = () => {
         } finally {
             setLoading(false);
         }
-        if (contractRef.current && filterRef.current && (contractRef.current as any)._transferListener) {
-            contractRef.current.off(filterRef.current, (contractRef.current as any)._transferListener);
+        // Cleanup listeners
+        if (contractRef.current && listenersRef.current.length) {
+            listenersRef.current.forEach(({ eventName, listener }) => {
+                if (contractRef.current) {
+                    contractRef.current.off(eventName, listener);
+                }
+            });
+            listenersRef.current = [];
         }
     }, []);
 
