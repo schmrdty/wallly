@@ -773,6 +773,17 @@ contract WallyWatcherV1 is
     }
 
     // --- MetaTx Execution (ETH/ERC20 Fee, relayer support) ---
+    /// @notice Executes a meta-transaction with relayer fee support
+    /// @dev Validates EIP-712 signature and executes transaction with fee payment
+    /// @param from User address that signed the transaction
+    /// @param to Target contract address
+    /// @param value ETH value to send
+    /// @param data Transaction data
+    /// @param fee Fee amount to pay relayer
+    /// @param feeToken Token to pay fee in (address(0) for ETH)
+    /// @param relayer Address to receive relayer fee
+    /// @param nonce User's current meta-tx nonce
+    /// @param signature EIP-712 signature from user
     function executeMetaTx(
         address from,
         address to,
@@ -783,7 +794,7 @@ contract WallyWatcherV1 is
         address relayer,
         uint256 nonce,
         bytes memory signature
-    ) external whenNotPaused {
+    ) external whenNotPaused nonReentrant notEmergencyPaused {
         if (nonce != metaTxNonces[from]) revert InvalidNonce();
         if (fee > maxRelayerFee) revert FeeTooHigh();
         bytes32 structHash = keccak256(
@@ -821,6 +832,16 @@ contract WallyWatcherV1 is
     }
 
     // --- AA Execution (bundler calls this, increments AA nonce) ---
+    /// @notice Executes an Account Abstraction transaction
+    /// @dev Only callable by EntryPoint contract
+    /// @param from User address
+    /// @param to Target contract address  
+    /// @param value ETH value to send
+    /// @param data Transaction data
+    /// @param fee Fee amount to pay relayer
+    /// @param feeToken Token to pay fee in (address(0) for ETH)
+    /// @param relayer Address to receive relayer fee
+    /// @param nonce User's current AA nonce
     function executeAA(
         address from,
         address to,
@@ -830,8 +851,8 @@ contract WallyWatcherV1 is
         address feeToken,
         address relayer,
         uint256 nonce
-    ) external {
-        require(msg.sender == address(_entryPoint), "Only EntryPoint");
+    ) external nonReentrant {
+        if (msg.sender != address(_entryPoint)) revert NotOwner();
         if (nonce != aaNonces[from]) revert InvalidNonce();
         if (fee > maxRelayerFee) revert FeeTooHigh();
         aaNonces[from]++;
@@ -849,13 +870,20 @@ contract WallyWatcherV1 is
     }
 
     // --- Delegation for Mini-App Session ---
+    /// @notice Delegates mini-app session using EIP-712 signature
+    /// @dev Allows gasless session delegation via relayer
+    /// @param delegator User address delegating session rights
+    /// @param delegatee Address receiving delegation rights
+    /// @param expiresAt Unix timestamp when delegation expires
+    /// @param nonce Delegator's current delegation nonce
+    /// @param signature EIP-712 signature from delegator
     function delegateMiniAppSessionBySig(
         address delegator,
         address delegatee,
         uint256 expiresAt,
         uint256 nonce,
         bytes memory signature
-    ) external whenNotPaused {
+    ) external whenNotPaused notEmergencyPaused {
         if (nonce != delegationNonces[delegator]) revert InvalidNonce();
         address signer = verifyDelegationSignature(delegator, delegatee, expiresAt, nonce, signature);
         if (signer != delegator) revert InvalidSignature();
@@ -868,13 +896,20 @@ contract WallyWatcherV1 is
     }
 
     // --- Session Signature for Mini-App (FULL IMPLEMENTATION) ---
+    /// @notice Activates a session using EIP-712 signature
+    /// @dev Allows gasless session activation via relayer
+    /// @param user User address that signed the session
+    /// @param app Application address receiving session rights
+    /// @param expiresAt Unix timestamp when session expires
+    /// @param nonce User's current session nonce
+    /// @param signature EIP-712 signature from user
     function activateSessionBySig(
         address user,
         address app,
         uint256 expiresAt,
         uint256 nonce,
         bytes memory signature
-    ) external whenNotPaused {
+    ) external whenNotPaused notEmergencyPaused {
         if (nonce != sessionNonces[user]) revert InvalidNonce();
         address signer = verifySessionSignature(user, app, expiresAt, nonce, signature);
         if (signer != user) revert InvalidSignature();
@@ -883,11 +918,19 @@ contract WallyWatcherV1 is
         session.delegate = app;
         session.expiresAt = expiresAt;
         session.active = true;
-        // Optionally set allowedTokens and allowWholeWallet from a trusted offchain source.
+        // Note: allowedTokens and allowWholeWallet should be set via updateMiniAppSessionAccess
         emit MiniAppSessionGranted(user, app, session.allowedTokens, session.allowWholeWallet, expiresAt);
     }
 
     // --- ERC20 Permit-like Authorization ---
+    /// @notice Transfers tokens using EIP-712 authorization signature
+    /// @dev Allows gasless token transfers with signature-based authorization
+    /// @param owner Token owner address
+    /// @param spender Address to receive tokens
+    /// @param amount Amount of tokens to transfer
+    /// @param deadline Unix timestamp deadline for signature validity
+    /// @param nonce Owner's current transfer authorization nonce
+    /// @param signature EIP-712 signature from owner
     function transferByAuthorization(
         address owner,
         address spender,
@@ -895,7 +938,7 @@ contract WallyWatcherV1 is
         uint256 deadline,
         uint256 nonce,
         bytes memory signature
-    ) external whenNotPaused {
+    ) external whenNotPaused nonReentrant {
         if (block.timestamp > deadline) revert PermissionExpired();
         if (nonce != transferAuthNonces[owner]) revert InvalidNonce();
         address signer = verifyTransferAuthSignature(owner, spender, amount, deadline, nonce, signature);
@@ -1150,12 +1193,27 @@ contract WallyWatcherV1 is
     }
 
     // --- Mini-App Session Views ---
+    
+    /// @notice Gets mini-app session information for a user
+    /// @param user User address to query
+    /// @return delegate Address that has delegation rights
+    /// @return expiresAt Unix timestamp when session expires
+    /// @return allowedTokens Array of tokens the delegate can access
+    /// @return allowWholeWallet Whether delegate can access entire wallet
+    /// @return active Whether the session is currently active
     function getMiniAppSession(address user) public view returns (
         address delegate, uint256 expiresAt, address[] memory allowedTokens, bool allowWholeWallet, bool active
     ) {
         MiniAppSession storage session = miniAppSessions[user];
         return (session.delegate, session.expiresAt, session.allowedTokens, session.allowWholeWallet, session.active);
     }
+    
+    /// @notice Gets mini-app session information for the caller
+    /// @return delegate Address that has delegation rights
+    /// @return expiresAt Unix timestamp when session expires
+    /// @return allowedTokens Array of tokens the delegate can access
+    /// @return allowWholeWallet Whether delegate can access entire wallet
+    /// @return active Whether the session is currently active
     function getMyMiniAppSession() external view returns (
         address delegate, uint256 expiresAt, address[] memory allowedTokens, bool allowWholeWallet, bool active
     ) {
@@ -1254,15 +1312,98 @@ contract WallyWatcherV1 is
         return _validateSignature(userOp, userOpHash);
     }
 
+    /// @notice Converts hash to Ethereum signed message hash
+    /// @param hash Original hash to wrap
+    /// @return Ethereum signed message hash
+    // --- Additional Utility Functions ---
+    
+    /// @notice Gets a user's current nonces for all EIP-712 functions
+    /// @param user User address to query
+    /// @return permissionNonce Current permission nonce
+    /// @return metaTxNonce Current meta-transaction nonce  
+    /// @return delegationNonce Current delegation nonce
+    /// @return sessionNonce Current session nonce
+    /// @return transferAuthNonce Current transfer authorization nonce
+    function getUserNonces(address user) external view returns (
+        uint256 permissionNonce,
+        uint256 metaTxNonce,
+        uint256 delegationNonce, 
+        uint256 sessionNonce,
+        uint256 transferAuthNonce
+    ) {
+        return (
+            permissionNonces[user],
+            metaTxNonces[user], 
+            delegationNonces[user],
+            sessionNonces[user],
+            transferAuthNonces[user]
+        );
+    }
+    
+    /// @notice Batch revoke permissions for multiple users (Emergency Admin only)
+    /// @dev Useful for emergency situations requiring multiple user lockouts
+    /// @param users Array of user addresses to revoke permissions for
+    /// @return revokedCount Number of permissions actually revoked
+    function batchRevokePermissions(address[] calldata users) external onlyEmergencyAdmin returns (uint256 revokedCount) {
+        for (uint i = 0; i < users.length; i++) {
+            UserPermission storage perm = permissions[users[i]];
+            if (perm.isActive) {
+                perm.isActive = false;
+                revokedCount++;
+                emit PermissionForceRevoked(msg.sender, users[i]);
+            }
+        }
+    }
+    
+    /// @notice Checks if oracle fallback is currently being used
+    /// @return usingFallback Whether block.timestamp is being used instead of oracle
+    /// @return oracleTimestamp Current oracle timestamp (0 if not available)
+    /// @return blockTimestamp Current block timestamp
+    function getTimestampStatus() external view returns (
+        bool usingFallback,
+        uint256 oracleTimestamp,
+        uint256 blockTimestamp
+    ) {
+        blockTimestamp = block.timestamp;
+        usingFallback = true;
+        oracleTimestamp = 0;
+        
+        if (useChainlink) {
+            try chainlinkOracle.latestRoundData() returns (
+                uint80, int256, uint256, uint256 updatedAt, uint80
+            ) {
+                if (
+                    updatedAt > 0 &&
+                    updatedAt >= block.timestamp - maxOracleDelay &&
+                    updatedAt <= block.timestamp + 10 minutes
+                ) {
+                    oracleTimestamp = updatedAt;
+                    usingFallback = false;
+                }
+            } catch {}
+        }
+    }
+
+    /// @notice Converts hash to Ethereum signed message hash
+    /// @param hash Original hash to wrap
+    /// @return Ethereum signed message hash
     function toEthSignedMessageHash(bytes32 hash) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
     }
 
+    /// @notice Refunds gas to a recipient when contract is paused
+    /// @dev Only callable by owner when contract is paused for emergency situations
+    /// @param recipient Address to receive the refund
+    /// @param amount Amount of ETH to refund in wei
     function refundGas(address payable recipient, uint256 amount) external onlyOwner whenPaused {
-       require(address(this).balance >= amount, "Insufficient balance");
+       if (address(this).balance < amount) revert BadInput();
        (bool sent, ) = recipient.call{value: amount}("");
-       require(sent, "Refund failed");
+       if (!sent) revert NativeTransferFailed();
     }
+    
+    /// @notice Allows contract to receive ETH
     receive() external payable {}
+    
+    /// @dev Storage gap for future upgrades (UUPS pattern)
     uint256[240] private __gap;
 }
