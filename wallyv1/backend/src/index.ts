@@ -6,6 +6,7 @@ import transferRoutes from './routes/transfers';
 import sessionRoutes from './routes/sessions';
 import walletRoutes from './routes/walletRoutes';
 import tokenRoutes from './routes/token';
+import eipRoutes from './routes/eipRoutes';
 import { startEventListeners } from './services/eventListenerService';
 import { connectRedis } from './db/redisClient';
 import { sequelize } from './db/index';
@@ -62,6 +63,8 @@ app.use('/api/transfers', transferRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/token', tokenRoutes);
+app.use('/api/eip7702', eipRoutes);
+app.use('/api/eip5792', eipRoutes);
 app.use('/sessions', sessionsRoutes);
 
 // Start contract event listeners
