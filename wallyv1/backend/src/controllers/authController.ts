@@ -32,6 +32,7 @@ export const login = async (req: Request, res: Response) => {
 
         // You can use result.fid or result.data as the user identifier
         const user = { id: result.fid, username: result.data?.username || '' };
+        if (!user.id) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
