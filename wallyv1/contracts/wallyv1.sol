@@ -66,6 +66,11 @@ error ERC20TransferFailed();
 error ArrayLengthMismatch();
 error FeeTooHigh();
 error InvalidSessionTokens();
+error NotWhitelistAdmin();
+error NotOracleAdmin();
+error OracleFallbackDisabled();
+error SessionNotExpired();
+error EmergencyPaused();
 
 contract WallyWatcherV1 is
     Initializable,
@@ -97,6 +102,11 @@ contract WallyWatcherV1 is
         "TransferAuthorization(address owner,address spender,uint256 amount,uint256 deadline,uint256 nonce)"
     );
     bytes32 public constant SETTINGS_ADMIN_ROLE = keccak256("SETTINGS_ADMIN_ROLE");
+    
+    // --- Granular Admin Roles ---
+    bytes32 public constant WHITELIST_ADMIN_ROLE = keccak256("WHITELIST_ADMIN_ROLE");
+    bytes32 public constant ORACLE_ADMIN_ROLE = keccak256("ORACLE_ADMIN_ROLE");
+    bytes32 public constant EMERGENCY_ADMIN_ROLE = keccak256("EMERGENCY_ADMIN_ROLE");
 
     address public ecdsaSigner;
     address public gnosisSafe;
@@ -126,20 +136,29 @@ contract WallyWatcherV1 is
     }
     mapping(address => MiniAppSession) private miniAppSessions;
 
+    // --- Optimized Structs for Better Storage Packing ---
+    
+    /// @notice Configuration for individual tokens within user permissions
+    /// @dev Packed struct: bool(1) + uint128(16) + uint128(16) = 33 bytes total but stored efficiently
     struct TokenConfig {
-        uint256 minBalance;
-        uint256 remainingBalance;
-        bool enabled;
+        bool enabled;                    // 1 byte
+        uint128 minBalance;             // 16 bytes - sufficient for most token amounts
+        uint128 remainingBalance;       // 16 bytes - sufficient for most token amounts
     }
+    
+    /// @notice User permission configuration optimized for storage packing
+    /// @dev Struct packing: address(20) + bool(1) + bool(1) + uint64(8) + uint64(8) = 38 bytes across 2 slots
     struct UserPermission {
-        address withdrawalAddress;
-        bool allowEntireWallet;
-        uint256 expiresAt;
+        address withdrawalAddress;       // 20 bytes
+        bool allowEntireWallet;         // 1 byte
+        bool isActive;                  // 1 byte
+        uint64 expiresAt;               // 8 bytes - sufficient until year 2554
+        uint64 lastGlobalRateLimit;     // 8 bytes - track global rate limiting
+        // 2 bytes padding to complete slot
+        
         mapping(address => TokenConfig) tokens;
         address[] tokenList;
-        mapping(address => bool) tokenExists;
-        mapping(bytes4 => uint256) lastFunctionCall;
-        bool isActive;
+        mapping(bytes4 => uint64) lastFunctionCall;  // Use uint64 for timestamps
     }
 
     // --- EIP712 Structs ---
@@ -179,13 +198,13 @@ contract WallyWatcherV1 is
         uint256 nonce;
     }
 
-    // --- Nonces for EIP712 ---
-    mapping(address => uint256) public permissionNonces;
-    mapping(address => uint256) public metaTxNonces;
-    mapping(address => uint256) public delegationNonces;
-    mapping(address => uint256) public sessionNonces;
-    mapping(address => uint256) public transferAuthNonces;
-    mapping(address => uint256) public aaNonces; // AA nonces
+    // --- Nonces for EIP712 (made internal where not needed externally) ---
+    mapping(address => uint256) internal permissionNonces;
+    mapping(address => uint256) internal metaTxNonces;
+    mapping(address => uint256) internal delegationNonces;
+    mapping(address => uint256) internal sessionNonces;
+    mapping(address => uint256) internal transferAuthNonces;
+    mapping(address => uint256) public aaNonces; // Keep public for AA validation
 
     uint256 public maxRelayerFee; // Settings admin can set this. Optional, for sane fee limit.
 
@@ -209,16 +228,46 @@ contract WallyWatcherV1 is
     event MiniAppSessionGranted(address indexed user, address indexed delegate, address[] tokens, bool allowWholeWallet, uint256 expiresAt);
     event MiniAppSessionRevoked(address indexed user, address indexed delegate);
     event MiniAppSessionAction(address indexed user, address indexed delegate, string action, address[] tokens, uint256 timestamp);
+    event MiniAppSessionExpired(address indexed user, address indexed delegate, uint256 expiredAt);
+    event MiniAppSessionCleaned(address indexed user, uint256 cleanupCount);
+
+    // --- Token Management Events ---
+    event TokenLimitUpdated(address indexed user, address indexed token, uint256 newLimit);
+    event TokenMinBalanceUpdated(address indexed user, address indexed token, uint256 newMinBalance);
+
+    // --- Administrative Events ---
+    event OracleFallbackConfigChanged(bool enabled);
+    event EmergencyPaused(address indexed admin, string reason);
+    event EmergencyUnpaused(address indexed admin);
+    event RoleAdminUpdated(bytes32 indexed role, address indexed admin, bool granted);
 
     // --- Offchain Tracking for Relayer ---
     event PermissionGrantedBySig(address indexed user, address withdrawalAddress, bool allowEntireWallet, uint256 expiresAt, uint256 nonce, address[] tokenList, uint256[] minBalances, uint256[] limits);
 
     // --- Oracle Fallback Config ---
     uint256 public maxOracleDelay;
+    bool public allowOracleFallback;  // Config switch to disable block.timestamp fallback
+    bool public emergencyPaused;     // Circuit breaker for emergency situations
 
     // --- Modifiers ---
     modifier onlySettingsAdmin() {
         if (!hasRole(SETTINGS_ADMIN_ROLE, msg.sender)) revert NotSettingsAdmin();
+        _;
+    }
+    modifier onlyWhitelistAdmin() {
+        if (!hasRole(WHITELIST_ADMIN_ROLE, msg.sender)) revert NotWhitelistAdmin();
+        _;
+    }
+    modifier onlyOracleAdmin() {
+        if (!hasRole(ORACLE_ADMIN_ROLE, msg.sender)) revert NotOracleAdmin();
+        _;
+    }
+    modifier onlyEmergencyAdmin() {
+        if (!hasRole(EMERGENCY_ADMIN_ROLE, msg.sender)) revert EmergencyPaused();
+        _;
+    }
+    modifier notEmergencyPaused() {
+        if (emergencyPaused) revert EmergencyPaused();
         _;
     }
     modifier onlySelfOrEntryPoint() {
@@ -233,17 +282,24 @@ contract WallyWatcherV1 is
     }
     modifier checkActive(address user) {
         if (!permissions[user].isActive) revert NoActivePermission();
-        if (getOracleTimestamp() >= permissions[user].expiresAt) revert PermissionExpired();
+        if (_safeGetOracleTimestamp() >= permissions[user].expiresAt) revert PermissionExpired();
         _;
     }
     modifier perFunctionRateLimit(address user, bytes4 selector) {
-        uint256 last = permissions[user].lastFunctionCall[selector];
-        uint256 rate = functionRateLimitOverrides[selector] > 0
-            ? functionRateLimitOverrides[selector]
-            : globalRateLimit;
-        if (getOracleTimestamp() < last + rate) revert RateLimited();
+        uint64 now64 = _toUint64(_safeGetOracleTimestamp());
+        uint64 last = permissions[user].lastFunctionCall[selector];
+        uint64 globalLast = permissions[user].lastGlobalRateLimit;
+        uint64 rate = functionRateLimitOverrides[selector] > 0
+            ? _toUint64(functionRateLimitOverrides[selector])
+            : _toUint64(globalRateLimit);
+        
+        // Check both function-specific and global rate limits
+        if (now64 < last + rate) revert RateLimited();
+        if (now64 < globalLast + _toUint64(globalRateLimit)) revert RateLimited();
+        
         _;
-        permissions[user].lastFunctionCall[selector] = getOracleTimestamp();
+        permissions[user].lastFunctionCall[selector] = now64;
+        permissions[user].lastGlobalRateLimit = now64;
     }
     modifier onlyOwnerAA() {
         if (msg.sender != ecdsaSigner) revert NotOwner();
@@ -260,7 +316,18 @@ contract WallyWatcherV1 is
     // --- UUPS Upgradeability ---
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner whenPaused {}
 
-    // --- Initializer ---
+    /// @notice Initializes the WallyWatcherV1 contract
+    /// @dev This contract uses UUPS proxy pattern for upgradeability
+    /// @dev Upgrade path: Only owner can authorize upgrades when contract is paused
+    /// @dev For additional security, consider using a multisig or timelock for the owner role
+    /// @param _ecdsaSigner Address that can sign transactions for this wallet
+    /// @param _gnosisSafe Multisig address for administrative functions  
+    /// @param _whitelistToken Token required for user whitelist (address(0) to disable)
+    /// @param _minWhitelistBalance Minimum balance required for whitelist token
+    /// @param _chainlinkOracle Chainlink price oracle for timestamp verification
+    /// @param _useChainlink Whether to use Chainlink oracle for timestamps
+    /// @param entryPointAddr ERC-4337 EntryPoint contract address
+    /// @param _maxOracleDelay Maximum allowed delay for oracle data
     function initialize(
         address _ecdsaSigner,
         address _gnosisSafe,
@@ -271,6 +338,11 @@ contract WallyWatcherV1 is
         address entryPointAddr,
         uint256 _maxOracleDelay
     ) public initializer {
+        if (_ecdsaSigner == address(0)) revert ZeroAddress();
+        if (_gnosisSafe == address(0)) revert ZeroAddress();
+        if (entryPointAddr == address(0)) revert ZeroAddress();
+        if (_chainlinkOracle == address(0) && _useChainlink) revert ZeroAddress();
+        
         __Ownable_init(_gnosisSafe);
         __UUPSUpgradeable_init();
         __AccessControl_init();
@@ -285,6 +357,8 @@ contract WallyWatcherV1 is
         chainlinkOracle = AggregatorV3Interface(_chainlinkOracle);
         useChainlink = _useChainlink;
         maxOracleDelay = _maxOracleDelay;
+        allowOracleFallback = true; // Default to allowing fallback
+        emergencyPaused = false;    // Default to not emergency paused
         defaultDuration = 1 days;
         minDuration = 1 hours;
         maxDuration = 365 days;
@@ -292,25 +366,41 @@ contract WallyWatcherV1 is
         maxRelayerFee = 1 ether; // Default: 1 ETH max, settings admin can change
         _entryPoint = IEntryPoint(entryPointAddr);
 
+        // Grant admin roles
         _grantRole(DEFAULT_ADMIN_ROLE, _gnosisSafe);
         _grantRole(SETTINGS_ADMIN_ROLE, _gnosisSafe);
+        _grantRole(WHITELIST_ADMIN_ROLE, _gnosisSafe);
+        _grantRole(ORACLE_ADMIN_ROLE, _gnosisSafe);
+        _grantRole(EMERGENCY_ADMIN_ROLE, _gnosisSafe);
 
         emit OwnerChanged(_ecdsaSigner);
         emit GnosisSafeChanged(_gnosisSafe);
         emit EntryPointChanged(entryPointAddr);
+        emit OracleFallbackConfigChanged(true);
     }
 
-    // --- Chainlink Oracle Usage ---
-    function setMaxOracleDelay(uint256 newDelay) external onlySettingsAdmin {
-        if (newDelay == 0) revert BadInput();
-        maxOracleDelay = newDelay;
+    // --- Oracle and Utility Functions ---
+    
+    /// @notice Safely converts uint256 to uint64, reverting on overflow
+    /// @param value The value to convert
+    /// @return The converted uint64 value
+    function _toUint64(uint256 value) internal pure returns (uint64) {
+        if (value > type(uint64).max) revert BadInput();
+        return uint64(value);
     }
-    function setMaxRelayerFee(uint256 newFee) external onlySettingsAdmin {
-        maxRelayerFee = newFee;
+    
+    /// @notice Safely converts uint256 to uint128, reverting on overflow  
+    /// @param value The value to convert
+    /// @return The converted uint128 value
+    function _toUint128(uint256 value) internal pure returns (uint128) {
+        if (value > type(uint128).max) revert BadInput();
+        return uint128(value);
     }
-
-    function getOracleTimestamp() public view returns (uint256) {
-        if (useChainlink) {
+    
+    /// @notice Gets oracle timestamp with fallback protection
+    /// @return Current timestamp from oracle or block.timestamp if oracle fails/disabled
+    function _safeGetOracleTimestamp() internal view returns (uint256) {
+        if (useChainlink && allowOracleFallback) {
             try chainlinkOracle.latestRoundData() returns (
                 uint80, int256, uint256, uint256 updatedAt, uint80
             ) {
@@ -323,9 +413,18 @@ contract WallyWatcherV1 is
                 }
             } catch {}
         }
+        if (!allowOracleFallback && useChainlink) revert OracleFallbackDisabled();
         return block.timestamp;
     }
 
+    /// @notice Gets oracle timestamp and tracks whether fallback was used
+    /// @return timestamp Current timestamp
+    function getOracleTimestamp() public view returns (uint256) {
+        return _safeGetOracleTimestamp();
+    }
+
+    /// @notice Gets oracle timestamp with event emission for fallback usage
+    /// @return Current timestamp, emitting fallback event if needed
     function _getOracleTimestampWithEvent() internal returns (uint256) {
         uint256 oracleTs = 0;
         uint256 latestOracle = 0;
@@ -352,21 +451,98 @@ contract WallyWatcherV1 is
             fallbackUsed = true;
         }
         if (fallbackUsed) {
+            if (!allowOracleFallback) revert OracleFallbackDisabled();
             emit OracleFallbackUsed(block.timestamp, latestOracle);
             return block.timestamp;
         }
         return oracleTs;
     }
 
-    // --- Admin Functions ---
-    function setECDSASigner(address newSigner) external onlyOwnerAA { if (newSigner == address(0)) revert ZeroAddress(); ecdsaSigner = newSigner; emit OwnerChanged(newSigner);}
-    function setGnosisSafe(address newSafe) external onlyOwnerAA { if (newSafe == address(0)) revert ZeroAddress(); gnosisSafe = newSafe; emit GnosisSafeChanged(newSafe);}
-    function setEntryPoint(address newEntryPoint) external onlySettingsAdmin { _entryPoint = IEntryPoint(newEntryPoint); emit EntryPointChanged(newEntryPoint);}
-    function setWhitelist(address token, uint256 min) external onlySettingsAdmin whenNotPaused { whitelistToken = token; minWhitelistBalance = min; emit WhitelistChanged(token, min);}
-    function setChainlinkOracle(address newOracle) external onlySettingsAdmin { if (newOracle == address(0)) revert ZeroAddress(); chainlinkOracle = AggregatorV3Interface(newOracle); emit ChainlinkOracleChanged(newOracle);}
-    function setGlobalRateLimit(uint256 rateSeconds) external onlySettingsAdmin { globalRateLimit = rateSeconds;}
-    function setFunctionRateLimit(bytes4 selector, uint256 rateSeconds) external onlySettingsAdmin { functionRateLimitOverrides[selector] = rateSeconds;}
-    function setDefaultDurations(uint256 _default, uint256 _min, uint256 _max) external onlySettingsAdmin { if (!(_min <= _default && _default <= _max)) revert BadInput(); defaultDuration = _default; minDuration = _min; maxDuration = _max;}
+    // --- Admin Functions with Granular Access Control ---
+    
+    /// @notice Updates the oracle configuration (Oracle Admin only)
+    /// @param newDelay Maximum delay allowed for oracle data
+    function setMaxOracleDelay(uint256 newDelay) external onlyOracleAdmin {
+        if (newDelay == 0) revert BadInput();
+        maxOracleDelay = newDelay;
+    }
+    
+    /// @notice Sets the Chainlink oracle address (Oracle Admin only)
+    /// @param newOracle New oracle contract address
+    function setChainlinkOracle(address newOracle) external onlyOracleAdmin {
+        if (newOracle == address(0)) revert ZeroAddress();
+        chainlinkOracle = AggregatorV3Interface(newOracle);
+        emit ChainlinkOracleChanged(newOracle);
+    }
+    
+    /// @notice Configures oracle fallback behavior (Oracle Admin only)
+    /// @param enabled Whether to allow fallback to block.timestamp
+    function setOracleFallbackEnabled(bool enabled) external onlyOracleAdmin {
+        allowOracleFallback = enabled;
+        emit OracleFallbackConfigChanged(enabled);
+    }
+    
+    /// @notice Updates whitelist token configuration (Whitelist Admin only)
+    /// @param token Token contract address (address(0) to disable whitelist)
+    /// @param min Minimum balance required
+    function setWhitelist(address token, uint256 min) external onlyWhitelistAdmin whenNotPaused {
+        whitelistToken = token;
+        minWhitelistBalance = min;
+        emit WhitelistChanged(token, min);
+    }
+    
+    /// @notice Sets maximum relayer fee (Settings Admin only)
+    /// @param newFee Maximum fee in wei
+    function setMaxRelayerFee(uint256 newFee) external onlySettingsAdmin {
+        maxRelayerFee = newFee;
+    }
+    
+    /// @notice Emergency pause all critical functions (Emergency Admin only)
+    /// @param reason Reason for emergency pause
+    function emergencyPause(string calldata reason) external onlyEmergencyAdmin {
+        emergencyPaused = true;
+        emit EmergencyPaused(msg.sender, reason);
+    }
+    
+    /// @notice Unpause emergency functions (Emergency Admin only)
+    function emergencyUnpause() external onlyEmergencyAdmin {
+        emergencyPaused = false;
+        emit EmergencyUnpaused(msg.sender);
+    }
+
+    // --- Legacy Admin Functions (Updated with Zero Address Checks) ---
+    function setECDSASigner(address newSigner) external onlyOwnerAA {
+        if (newSigner == address(0)) revert ZeroAddress();
+        ecdsaSigner = newSigner;
+        emit OwnerChanged(newSigner);
+    }
+    
+    function setGnosisSafe(address newSafe) external onlyOwnerAA {
+        if (newSafe == address(0)) revert ZeroAddress();
+        gnosisSafe = newSafe;
+        emit GnosisSafeChanged(newSafe);
+    }
+    
+    function setEntryPoint(address newEntryPoint) external onlySettingsAdmin {
+        if (newEntryPoint == address(0)) revert ZeroAddress();
+        _entryPoint = IEntryPoint(newEntryPoint);
+        emit EntryPointChanged(newEntryPoint);
+    }
+    
+    function setGlobalRateLimit(uint256 rateSeconds) external onlySettingsAdmin {
+        globalRateLimit = rateSeconds;
+    }
+    
+    function setFunctionRateLimit(bytes4 selector, uint256 rateSeconds) external onlySettingsAdmin {
+        functionRateLimitOverrides[selector] = rateSeconds;
+    }
+    
+    function setDefaultDurations(uint256 _default, uint256 _min, uint256 _max) external onlySettingsAdmin {
+        if (!(_min <= _default && _default <= _max)) revert BadInput();
+        defaultDuration = _default;
+        minDuration = _min;
+        maxDuration = _max;
+    }
 
     function changeOwnerWhenPaused(address newOwner) external onlyOwner whenPaused {
         if (newOwner == address(0)) revert ZeroAddress();
@@ -382,7 +558,14 @@ contract WallyWatcherV1 is
         }
     }
 
-    // --- Permission Self-Service ---
+    /// @notice Grants or updates user permissions with improved validation
+    /// @dev Validates all inputs and optimizes storage usage
+    /// @param withdrawalAddress Address where tokens will be sent
+    /// @param allowEntireWallet Whether user allows access to entire wallet
+    /// @param duration Permission duration in seconds
+    /// @param tokenList Array of token addresses to monitor
+    /// @param minBalances Minimum balances to maintain for each token
+    /// @param limits Maximum amounts that can be transferred for each token
     function grantOrUpdatePermission(
         address withdrawalAddress,
         bool allowEntireWallet,
@@ -390,37 +573,49 @@ contract WallyWatcherV1 is
         address[] calldata tokenList,
         uint256[] calldata minBalances,
         uint256[] calldata limits
-    ) external whenNotPaused whitelistEnforced(msg.sender) perFunctionRateLimit(msg.sender, msg.sig) {
+    ) external whenNotPaused whitelistEnforced(msg.sender) perFunctionRateLimit(msg.sender, msg.sig) notEmergencyPaused {
         if (withdrawalAddress == address(0)) revert NoWithdrawalAddress();
         if (!(duration >= minDuration && duration <= maxDuration)) revert BadDuration();
         if (!(tokenList.length == minBalances.length && tokenList.length == limits.length)) revert ArrayLengthMismatch();
+        
         UserPermission storage perm = permissions[msg.sender];
         perm.withdrawalAddress = withdrawalAddress;
         perm.allowEntireWallet = allowEntireWallet;
-        perm.expiresAt = _getOracleTimestampWithEvent() + duration;
+        perm.expiresAt = _toUint64(_getOracleTimestampWithEvent() + duration);
         perm.isActive = true;
+        
+        // Clean up existing tokens
         for (uint i = 0; i < perm.tokenList.length; i++) {
             address t = perm.tokenList[i];
-            perm.tokens[t].enabled = false;
-            perm.tokenExists[t] = false;
             delete perm.tokens[t];
         }
         delete perm.tokenList;
+        
+        // Add new tokens with optimized storage
         for (uint i = 0; i < tokenList.length; i++) {
             address token = tokenList[i];
-            if (!perm.tokenExists[token]) {
-                perm.tokenList.push(token);
-                perm.tokenExists[token] = true;
-            }
+            perm.tokenList.push(token);
             perm.tokens[token] = TokenConfig({
-                minBalance: minBalances[i],
-                remainingBalance: limits[i],
-                enabled: true
+                enabled: true,
+                minBalance: _toUint128(minBalances[i]),
+                remainingBalance: _toUint128(limits[i])
             });
         }
+        
         emit PermissionGranted(msg.sender, withdrawalAddress, allowEntireWallet, perm.expiresAt, tokenList, minBalances, limits);
     }
 
+    /// @notice Grants permission using EIP-712 signature
+    /// @dev Allows gasless permission granting via relayer
+    /// @param user User address that signed the permission
+    /// @param withdrawalAddress Address where tokens will be sent  
+    /// @param allowEntireWallet Whether user allows access to entire wallet
+    /// @param expiresAt Unix timestamp when permission expires
+    /// @param nonce User's current permission nonce
+    /// @param signature EIP-712 signature from user
+    /// @param tokenList Array of token addresses to monitor
+    /// @param minBalances Minimum balances to maintain for each token
+    /// @param limits Maximum amounts that can be transferred for each token
     function grantPermissionBySig(
         address user,
         address withdrawalAddress,
@@ -431,35 +626,38 @@ contract WallyWatcherV1 is
         address[] calldata tokenList,
         uint256[] calldata minBalances,
         uint256[] calldata limits
-    ) external whenNotPaused whitelistEnforced(user) {
+    ) external whenNotPaused whitelistEnforced(user) notEmergencyPaused {
+        if (withdrawalAddress == address(0)) revert NoWithdrawalAddress();
         if (nonce != permissionNonces[user]) revert InvalidNonce();
+        
         address signer = verifyPermissionSignature(withdrawalAddress, allowEntireWallet, expiresAt, nonce, signature);
         if (signer != user) revert InvalidSignature();
+        
         permissionNonces[user]++;
         UserPermission storage perm = permissions[user];
         perm.withdrawalAddress = withdrawalAddress;
         perm.allowEntireWallet = allowEntireWallet;
-        perm.expiresAt = expiresAt;
+        perm.expiresAt = _toUint64(expiresAt);
         perm.isActive = true;
+        
+        // Clean up existing tokens
         for (uint i = 0; i < perm.tokenList.length; i++) {
             address t = perm.tokenList[i];
-            perm.tokens[t].enabled = false;
-            perm.tokenExists[t] = false;
             delete perm.tokens[t];
         }
         delete perm.tokenList;
+        
+        // Add new tokens with optimized storage
         for (uint i = 0; i < tokenList.length; i++) {
             address token = tokenList[i];
-            if (!perm.tokenExists[token]) {
-                perm.tokenList.push(token);
-                perm.tokenExists[token] = true;
-            }
+            perm.tokenList.push(token);
             perm.tokens[token] = TokenConfig({
-                minBalance: minBalances[i],
-                remainingBalance: limits[i],
-                enabled: true
+                enabled: true,
+                minBalance: _toUint128(minBalances[i]),
+                remainingBalance: _toUint128(limits[i])
             });
         }
+        
         emit PermissionGrantedBySig(user, withdrawalAddress, allowEntireWallet, expiresAt, nonce, tokenList, minBalances, limits);
     }
 
@@ -706,35 +904,110 @@ contract WallyWatcherV1 is
         IERC20(whitelistToken).safeTransferFrom(owner, spender, amount);
     }
 
-    // --- Mini-App Session Management ---
-    function grantMiniAppSession(address delegate, address[] calldata tokens, bool allowWholeWallet, uint256 durationSeconds)
-        external whenNotPaused
-    {
+    // --- Mini-App Session Management with Enhanced Features ---
+    
+    /// @notice Grants a mini-app session with validation
+    /// @dev Validates tokens are in user's permission list
+    /// @param delegate Address that will have delegation rights
+    /// @param tokens Array of token addresses to allow in session
+    /// @param allowWholeWallet Whether delegate can access entire wallet
+    /// @param durationSeconds Duration of session in seconds
+    function grantMiniAppSession(
+        address delegate, 
+        address[] calldata tokens, 
+        bool allowWholeWallet, 
+        uint256 durationSeconds
+    ) external whenNotPaused notEmergencyPaused {
         if (delegate == address(0)) revert NoDelegate();
         if (!(durationSeconds > 0 && durationSeconds <= 365 days)) revert BadDuration();
+        
         // Validate tokens are in user's permission list
+        UserPermission storage perm = permissions[msg.sender];
         for (uint i = 0; i < tokens.length; i++) {
-            if (!permissions[msg.sender].tokenExists[tokens[i]]) revert InvalidSessionTokens();
+            bool tokenFound = false;
+            for (uint j = 0; j < perm.tokenList.length; j++) {
+                if (perm.tokenList[j] == tokens[i]) {
+                    tokenFound = true;
+                    break;
+                }
+            }
+            if (!tokenFound) revert InvalidSessionTokens();
         }
+        
         MiniAppSession storage session = miniAppSessions[msg.sender];
         session.delegate = delegate;
         session.expiresAt = block.timestamp + durationSeconds;
         session.allowedTokens = tokens;
         session.allowWholeWallet = allowWholeWallet;
         session.active = true;
+        
         emit MiniAppSessionGranted(msg.sender, delegate, tokens, allowWholeWallet, session.expiresAt);
     }
-
+    
+    /// @notice Revokes the caller's mini-app session
     function revokeMiniAppSession() external whenNotPaused {
         MiniAppSession storage session = miniAppSessions[msg.sender];
         if (!session.active) revert NoActivePermission();
-        emit MiniAppSessionRevoked(msg.sender, session.delegate);
+        address delegate = session.delegate;
         delete miniAppSessions[msg.sender];
+        emit MiniAppSessionRevoked(msg.sender, delegate);
+    }
+    
+    /// @notice Updates session tokens and wallet access (only session owner)
+    /// @param tokens New array of allowed tokens
+    /// @param allowWholeWallet Whether to allow whole wallet access
+    function updateMiniAppSessionAccess(
+        address[] calldata tokens,
+        bool allowWholeWallet
+    ) external whenNotPaused {
+        MiniAppSession storage session = miniAppSessions[msg.sender];
+        if (!session.active) revert NoActivePermission();
+        if (block.timestamp > session.expiresAt) revert SessionExpired();
+        
+        // Validate tokens are in user's permission list
+        UserPermission storage perm = permissions[msg.sender];
+        for (uint i = 0; i < tokens.length; i++) {
+            bool tokenFound = false;
+            for (uint j = 0; j < perm.tokenList.length; j++) {
+                if (perm.tokenList[j] == tokens[i]) {
+                    tokenFound = true;
+                    break;
+                }
+            }
+            if (!tokenFound) revert InvalidSessionTokens();
+        }
+        
+        session.allowedTokens = tokens;
+        session.allowWholeWallet = allowWholeWallet;
+    }
+    
+    /// @notice Cleans up expired mini-app sessions for multiple users
+    /// @dev Can be called by anyone to help with gas optimization
+    /// @param users Array of user addresses to check and clean
+    /// @return cleanedCount Number of sessions actually cleaned
+    function cleanupExpiredSessions(address[] calldata users) external returns (uint256 cleanedCount) {
+        uint256 currentTime = block.timestamp;
+        for (uint i = 0; i < users.length; i++) {
+            address user = users[i];
+            MiniAppSession storage session = miniAppSessions[user];
+            if (session.active && currentTime > session.expiresAt) {
+                address delegate = session.delegate;
+                delete miniAppSessions[user];
+                cleanedCount++;
+                emit MiniAppSessionExpired(user, delegate, session.expiresAt);
+            }
+        }
+        if (cleanedCount > 0) {
+            emit MiniAppSessionCleaned(msg.sender, cleanedCount);
+        }
     }
 
     // --- Mini-App Trigger Transfers ---
+    /// @notice Triggers transfers for a user via mini-app delegation
+    /// @dev Only callable by active mini-app delegate with valid session
+    /// @param user User address whose tokens to transfer
     function miniAppTriggerTransfers(address user)
-        external whenNotPaused onlyMiniAppWithSession(user) nonReentrant
+        external whenNotPaused onlyMiniAppWithSession(user) nonReentrant notEmergencyPaused
     {
         MiniAppSession storage session = miniAppSessions[user];
         UserPermission storage perm = permissions[user];
@@ -746,7 +1019,6 @@ contract WallyWatcherV1 is
 
         for (uint i = 0; i < tokens.length; i++) {
             address token = tokens[i];
-            if (!perm.tokenExists[token]) continue;
             TokenConfig storage cfg = perm.tokens[token];
             if (!cfg.enabled) continue;
 
@@ -757,9 +1029,13 @@ contract WallyWatcherV1 is
             } else {
                 userBal = IERC20(token).balanceOf(user);
             }
-            if (userBal > cfg.minBalance && cfg.remainingBalance > 0) {
-                uint256 toSend = userBal - cfg.minBalance;
-                if (toSend > cfg.remainingBalance) toSend = cfg.remainingBalance;
+            
+            uint256 minBal = uint256(cfg.minBalance);
+            uint256 remaining = uint256(cfg.remainingBalance);
+            
+            if (userBal > minBal && remaining > 0) {
+                uint256 toSend = userBal - minBal;
+                if (toSend > remaining) toSend = remaining;
                 if (toSend == 0) continue;
 
                 if (isNative) {
@@ -768,17 +1044,21 @@ contract WallyWatcherV1 is
                 } else {
                     IERC20(token).safeTransferFrom(user, perm.withdrawalAddress, toSend);
                 }
-                cfg.remainingBalance -= toSend;
+                
+                cfg.remainingBalance = _toUint128(remaining - toSend);
 
-                emit TransferPerformed(user, token, toSend, perm.withdrawalAddress, cfg.remainingBalance, _getOracleTimestampWithEvent(), block.timestamp);
+                emit TransferPerformed(user, token, toSend, perm.withdrawalAddress, remaining - toSend, _getOracleTimestampWithEvent(), block.timestamp);
             }
         }
         emit MiniAppSessionAction(user, msg.sender, "miniAppTriggerTransfers", tokens, block.timestamp);
     }
 
     // --- Relayer/App Function: Regular (User or EntryPoint) ---
+    /// @notice Triggers transfers for a user (callable by user or EntryPoint)
+    /// @dev Transfers tokens based on user's permission configuration
+    /// @param user User address whose tokens to transfer
     function triggerTransfers(address user)
-        external whenNotPaused checkActive(user) perFunctionRateLimit(user, msg.sig) nonReentrant
+        external whenNotPaused checkActive(user) perFunctionRateLimit(user, msg.sig) nonReentrant notEmergencyPaused
     {
         UserPermission storage perm = permissions[user];
         if (!(msg.sender == user || msg.sender == address(_entryPoint))) revert NotOwner();
@@ -796,9 +1076,13 @@ contract WallyWatcherV1 is
             } else {
                 userBal = IERC20(token).balanceOf(user);
             }
-            if (userBal > cfg.minBalance && cfg.remainingBalance > 0) {
-                uint256 toSend = userBal - cfg.minBalance;
-                if (toSend > cfg.remainingBalance) toSend = cfg.remainingBalance;
+            
+            uint256 minBal = uint256(cfg.minBalance);
+            uint256 remaining = uint256(cfg.remainingBalance);
+            
+            if (userBal > minBal && remaining > 0) {
+                uint256 toSend = userBal - minBal;
+                if (toSend > remaining) toSend = remaining;
                 if (toSend == 0) continue;
 
                 if (isNative) {
@@ -807,38 +1091,62 @@ contract WallyWatcherV1 is
                 } else {
                     IERC20(token).safeTransferFrom(user, perm.withdrawalAddress, toSend);
                 }
-                cfg.remainingBalance -= toSend;
+                
+                cfg.remainingBalance = _toUint128(remaining - toSend);
 
-                emit TransferPerformed(user, token, toSend, perm.withdrawalAddress, cfg.remainingBalance, _getOracleTimestampWithEvent(), block.timestamp);
+                emit TransferPerformed(user, token, toSend, perm.withdrawalAddress, remaining - toSend, _getOracleTimestampWithEvent(), block.timestamp);
             }
         }
     }
 
-    // --- Token/Limit Adjustment ---
+    // --- Token/Limit Adjustment with Enhanced Events ---
+    
+    /// @notice Removes a token from user's monitoring list
+    /// @param token Token address to remove
     function removeToken(address token) external {
-        require(permissions[msg.sender].tokenExists[token], "Token not in list");
-        permissions[msg.sender].tokens[token].enabled = false;
-        permissions[msg.sender].tokenExists[token] = false;
-        // Remove from tokenList array
-        address[] storage arr = permissions[msg.sender].tokenList;
+        UserPermission storage perm = permissions[msg.sender];
+        bool tokenFound = false;
+        
+        // Find and remove from tokenList array
+        address[] storage arr = perm.tokenList;
         for (uint i = 0; i < arr.length; i++) {
             if (arr[i] == token) {
                 arr[i] = arr[arr.length - 1];
                 arr.pop();
+                tokenFound = true;
                 break;
             }
         }
+        
+        if (!tokenFound) revert TokenNotInList();
+        
+        // Remove token config
+        delete perm.tokens[token];
         emit TokenRemoved(msg.sender, token);
     }
+    
+    /// @notice Updates the transfer limit for a specific token
+    /// @param token Token address to update
+    /// @param newLimit New limit amount
     function updateTokenLimit(address token, uint256 newLimit) external {
-        require(permissions[msg.sender].tokenExists[token], "Token not in list");
-        permissions[msg.sender].tokens[token].remainingBalance = newLimit;
-        emit TokenStopped(msg.sender, token);
+        UserPermission storage perm = permissions[msg.sender];
+        TokenConfig storage config = perm.tokens[token];
+        if (!config.enabled) revert TokenNotInList();
+        
+        config.remainingBalance = _toUint128(newLimit);
+        emit TokenLimitUpdated(msg.sender, token, newLimit);
     }
+    
+    /// @notice Updates the minimum balance for a specific token
+    /// @param token Token address to update
+    /// @param newMin New minimum balance amount
     function updateTokenMin(address token, uint256 newMin) external {
-        require(permissions[msg.sender].tokenExists[token], "Token not in list");
-        permissions[msg.sender].tokens[token].minBalance = newMin;
-        emit TokenStopped(msg.sender, token);
+        UserPermission storage perm = permissions[msg.sender];
+        TokenConfig storage config = perm.tokens[token];
+        if (!config.enabled) revert TokenNotInList();
+        
+        config.minBalance = _toUint128(newMin);
+        emit TokenMinBalanceUpdated(msg.sender, token, newMin);
     }
 
     // --- Mini-App Session Views ---
@@ -854,32 +1162,56 @@ contract WallyWatcherV1 is
         return getMiniAppSession(msg.sender);
     }
 
-    // --- User Permission View/Helpers ---
+    // --- User Permission View/Helpers with Enhanced Documentation ---
+    
+    /// @notice Gets complete user permission information
+    /// @param user User address to query
+    /// @return withdrawalAddress Address where tokens will be sent
+    /// @return allowEntireWallet Whether user allows access to entire wallet
+    /// @return expiresAt Unix timestamp when permission expires
+    /// @return isActive Whether permission is currently active
+    /// @return tokenList Array of monitored token addresses
+    /// @return minBalances Minimum balances to maintain for each token
+    /// @return limits Maximum transfer amounts for each token
     function getUserPermission(address user) external view returns (
-        address withdrawalAddress, bool allowEntireWallet, uint256 expiresAt, bool isActive, address[] memory tokenList, uint256[] memory minBalances, uint256[] memory limits
+        address withdrawalAddress, 
+        bool allowEntireWallet, 
+        uint256 expiresAt, 
+        bool isActive, 
+        address[] memory tokenList, 
+        uint256[] memory minBalances, 
+        uint256[] memory limits
     ) {
         UserPermission storage perm = permissions[user];
         withdrawalAddress = perm.withdrawalAddress;
         allowEntireWallet = perm.allowEntireWallet;
-        expiresAt = perm.expiresAt;
+        expiresAt = uint256(perm.expiresAt);
         isActive = perm.isActive;
         tokenList = perm.tokenList;
         minBalances = _getTokenMinBalances(user);
         limits = _getTokenLimits(user);
     }
+    
+    /// @notice Gets minimum balances for all user tokens
+    /// @param user User address to query
+    /// @return Array of minimum balances corresponding to tokenList
     function _getTokenMinBalances(address user) internal view returns (uint256[] memory) {
         UserPermission storage perm = permissions[user];
         uint256[] memory arr = new uint256[](perm.tokenList.length);
         for (uint i = 0; i < perm.tokenList.length; i++) {
-            arr[i] = perm.tokens[perm.tokenList[i]].minBalance;
+            arr[i] = uint256(perm.tokens[perm.tokenList[i]].minBalance);
         }
         return arr;
     }
+    
+    /// @notice Gets transfer limits for all user tokens
+    /// @param user User address to query
+    /// @return Array of transfer limits corresponding to tokenList
     function _getTokenLimits(address user) internal view returns (uint256[] memory) {
         UserPermission storage perm = permissions[user];
         uint256[] memory arr = new uint256[](perm.tokenList.length);
         for (uint i = 0; i < perm.tokenList.length; i++) {
-            arr[i] = perm.tokens[perm.tokenList[i]].remainingBalance;
+            arr[i] = uint256(perm.tokens[perm.tokenList[i]].remainingBalance);
         }
         return arr;
     }
