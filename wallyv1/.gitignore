@@ -31,3 +31,6 @@ next/
 *.mdx
 *.rules
 .rules
+*tests/
+*.test.js
+*.test.ts
