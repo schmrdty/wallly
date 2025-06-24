@@ -3,8 +3,7 @@ import Link from 'next/link';
 
 export const HomeNav: React.FC = () => (
   <nav>
-    <Link href="/Instructions">Instructions</Link>
-    <Link href="/Share">Share</Link>
-    <Link href="/Feedback">Feedback</Link>
+    <Link href='/instructions'>Instructions</Link>
+    <Link href='/feedback'>Feedback</Link>
   </nav>
 );

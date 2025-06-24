@@ -1,30 +1,19 @@
-import { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
+import { useAccount, useBalance } from 'wagmi';
 
 export function useWallet() {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [balance, setBalance] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const { address, isConnected } = useAccount();
+  const balanceResult = address ? useBalance({ address }) : { data: undefined };
 
-  useEffect(() => {
-    async function fetchWalletDetails() {
-      if (window.ethereum) {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const accounts = await provider.send('eth_requestAccounts', []);
-        setWalletAddress(accounts[0]);
-        setIsConnected(accounts.length > 0);
-
-        const balance = await provider.getBalance(accounts[0]);
-        setBalance(ethers.utils.formatEther(balance));
-      } else {
-        setIsConnected(false);
-      }
-    }
-
-    fetchWalletDetails();
-  }, []);
-
-  return { walletAddress, balance, isConnected };
+  return {
+    walletAddress: address ?? null,
+    balance: balanceResult.data ? balanceResult.data.formatted : null,
+    isConnected: !!isConnected,
+  };
 }
 
 export default useWallet;
+export type WalletInfo = {
+  walletAddress: string | null;
+  balance: string | null;
+  isConnected: boolean;
+};

@@ -1,25 +1,42 @@
-import express from 'express';
-import { roundRobinFindToken } from '../services/tokenListService';
-import { startWatchingToken, stopWatchingToken, resolveToken, listWatchedTokens } from '../controllers/tokenController';
+import express, { Request, Response, NextFunction } from 'express';
+import { roundRobinFindToken } from '../services/tokenListService.js';
+import {
+  startWatchingToken,
+  stopWatchingToken,
+  resolveToken,
+  listWatchedTokens
+} from '../controllers/tokenController.js';
 
 const router = express.Router();
 
-router.post('/resolve', async (req, res) => {
-  const { query } = req.body;
+// POST /api/token/resolveToken
+router.post('/resolveToken', resolveToken);
+
+// POST /api/token/start-watching
+router.post('/start-watching', async (req: Request, res: Response, _next: NextFunction) => {
   try {
-    const token = await roundRobinFindToken(query);
-    if (token) {
-      res.json({ valid: true, ...token });
-    } else {
-      res.json({ valid: false, message: 'Token not found.' });
-    }
+    await startWatchingToken(req, res);
   } catch (err) {
-    res.status(500).json({ valid: false, message: 'Error resolving token.' });
+    _next(err);
   }
 });
 
-router.post('/start-watching', startWatchingToken);
-router.post('/stop-watching', stopWatchingToken);
-router.get('/watched', listWatchedTokens);
+// POST /api/token/stop-watching
+router.post('/stop-watching', async (req: Request, res: Response, _next: NextFunction) => {
+  try {
+    await stopWatchingToken(req, res);
+  } catch (err) {
+    _next(err);
+  }
+});
+
+// GET /api/token/watched
+router.get('/watched', async (req: Request, res: Response, _next: NextFunction) => {
+  try {
+    await listWatchedTokens(req, res);
+  } catch (err) {
+    _next(err);
+  }
+});
 
 export default router;

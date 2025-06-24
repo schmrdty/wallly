@@ -6,15 +6,15 @@ interface DashboardSignOutButtonsProps {
 }
 
 export const DashboardSignOutButtons: React.FC<DashboardSignOutButtonsProps> = ({ user, logoutUser }) => (
-  <>
+  <div className="flex flex-col gap-3 p-4 bg-white/10 backdrop-blur-md rounded-xl pondWater-font shadow pondWater-btn">
     {user?.authProvider === 'farcaster' && (
-      <button onClick={logoutUser}>Sign out of Farcaster</button>
+      <button className="pondWater-btn" onClick={logoutUser}>Sign out of Farcaster</button>
     )}
     {user?.authProvider === 'ethereum' && (
-      <button onClick={logoutUser}>Sign out of Ethereum</button>
+      <button className="pondWater-btn" onClick={logoutUser}>Sign out of Ethereum</button>
     )}
     {!user?.authProvider && (
-      <button onClick={logoutUser}>Sign out</button>
+      <button className="pondWater-btn" onClick={logoutUser}>Sign out</button>
     )}
-  </>
+  </div>
 );

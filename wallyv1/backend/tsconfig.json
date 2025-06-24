@@ -1,18 +1,33 @@
 {
   "compilerOptions": {
-    "target": "ES6",
-    "module": "commonjs",
+    "target": "es2022",
+    "module": "nodenext",
+    "lib": [
+      "es2022",
+      "dom"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "baseUrl": "./src",
+    "resolveJsonModule": true,
+    "moduleResolution": "nodenext",
+    "baseUrl": ".",
     "paths": {
-      "*": ["node_modules/*", "*"]
+      "@/*": [
+        "src/*"
+      ]
     }
   },
-  "include": ["src/**/*", "src/db/redisClient.ts"],
-  "exclude": ["node_modules", "**/*.spec.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.json"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ]
 }

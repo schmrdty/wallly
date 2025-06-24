@@ -1,73 +1,135 @@
-import { createPublicClient, http, getContract, parseAbi, decodeEventLog } from 'viem';
-import wallyv1Abi from '../abis/wallyv1.json';
-import { readContract } from 'viem/actions';
-import { getRpcUrl } from './rpcService';
+import { createConfig, http } from '@wagmi/core';
+import { optimism, base } from '@wagmi/core/chains';
+import * as wallyv1Abi from '../abis/wallyv1.json';
+import { useBalance, useSignMessage, useSendTransaction } from 'wagmi';
+import { useAppKitAccount } from '@reown/appkit/react';
+import { type Address } from 'viem';
+import { parseUnits } from 'viem';
+import { createPublicClient, http as viemHttp } from 'viem';
+import { type AbiEvent } from 'viem';
+
+// Create viem client for Optimism
+export const viemClientOptimism = createPublicClient({
+  chain: optimism,
+  transport: viemHttp(process.env.NEXT_PUBLIC_OPTIMISM_RPC_URL || 'https://optimism-mainnet.public.blastapi.io'),
+});
+
+// Create viem client for Base
+export const viemClientBase = createPublicClient({
+  chain: base,
+  transport: viemHttp(process.env.NEXT_PUBLIC_BASE_RPC_URL || 'https://base-mainnet.public.blastapi.io'),
+});
 
 const chainId = 8453; // Base Mainnet
+
 const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
 
 if (!contractAddress) {
   throw new Error('NEXT_PUBLIC_CONTRACT_ADDRESS is not set. Please set it in your .env file.');
 }
 
-const rpcUrl = getRpcUrl();
-
-export const viemClient = createPublicClient({
-  chain: {
-    id: chainId,
-    name: 'Base Mainnet',
-    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    rpcUrls: { default: { http: [rpcUrl] } },
-    blockExplorers: { default: { name: 'Basescan', url: 'https://basescan.org' } },
+// Corrected chain configuration with HTTP transport
+export const wagmiClient = createConfig({
+  chains: [optimism, base],
+  transports: {
+    [optimism.id]: http(),
+    [base.id]: http(),
   },
-  transport: http(rpcUrl),
 });
 
 // Contract instance for WallyWatcherV1
-export const wallyContract = getContract({
+export const wallyContract = {
   address: contractAddress,
   abi: wallyv1Abi,
-  client: viemClient,
-});
+};
+
+// NOTE: Farcaster AuthKit and sign-in must use Optimism (chainId 10)
+// Only use Base for app contract actions after authentication
 
 //- Read contract view function
-export async function readWallyView(functionName: string, args: any[] = []) {
-  // Correct: spread the arguments so each is a separate parameter
-  return wallyContract.read[functionName]();
-}
-// Helper: Call contract (write) function (requires wallet client, not public client)
-// This is a placeholder for when you add wallet integration
-// export async function writeWallyFunction(functionName: string, args: any[], account: Address) {
-//   return wallyContract.write[functionName](...args, { account });
-// }
-
-//- Get contract events (logs)
-export async function getWallyEvents(eventName: string, options: { fromBlock?: bigint, toBlock?: bigint, args?: any } = {}) {
-  const eventAbi = (parseAbi(wallyv1Abi as any).filter((e: any) => e.type === 'event') as any[]).find((e: any) => e.name === eventName);
-  if (!eventAbi) {
-    throw new Error(`Event "${eventName}" not found in ABI`);
-  }
-  return viemClient.getLogs({
+export async function readWallyView(functionName: string, args: any[] = [], chain: 'optimism' | 'base' = 'optimism') {
+  // For Farcaster AuthKit/sign-in, always use Optimism
+  const client = chain === 'optimism' ? viemClientOptimism : viemClientBase;
+  return client.readContract({
     address: contractAddress,
-    event: eventAbi,
+    abi: wallyv1Abi,
+    functionName,
+    args,
+  });
+}
+
+// Corrected event ABI handling
+export async function getWallyEvents(eventName: string, options: { fromBlock?: bigint, toBlock?: bigint, args?: any } = {}, chain: 'optimism' | 'base' = 'optimism') {
+  const client = chain === 'optimism' ? viemClientOptimism : viemClientBase;
+  const eventAbi = wallyv1Abi.find((e: any) => e.type === 'event' && e.name === eventName);
+  if (!eventAbi || eventAbi.type !== 'event') {
+    throw new Error(`Event '${eventName}' not found in ABI or is not a valid event`);
+  }
+  return client.getLogs({
+    address: contractAddress,
+    event: eventAbi as AbiEvent,
     ...options,
   });
 }
 
 //- Decode a log (raw log to event object)
 export function decodeWallyEventLog(eventName: string, log: any) {
-  return decodeEventLog({
-    abi: wallyv1Abi as any,
-    eventName,
-    ...log,
-  });
+  // Use wagmi utilities for decoding logs
+  throw new Error('decodeWallyEventLog needs to be implemented using wagmi utilities.');
 }
 
 //- Get latest block number
-export async function getLatestBlockNumber() {
-  return viemClient.getBlockNumber();
+export async function getLatestBlockNumber(chain: 'optimism' | 'base' = 'optimism') {
+  const client = chain === 'optimism' ? viemClientOptimism : viemClientBase;
+  return client.getBlockNumber();
 }
-function getUserPermission(address: any, user: any) {
-    throw new Error('Function not implemented.');
+
+// Fetch wallet balance
+export function useFetchBalance() {
+  const { address, isConnected } = useAppKitAccount();
+  const { refetch } = useBalance({ address: address as Address });
+
+  const handleGetBalance = async () => {
+    if (!isConnected) throw new Error('Wallet not connected');
+    const balance = await refetch();
+    console.log(`${balance?.data?.value.toString()} ${balance?.data?.symbol.toString()}`);
+  };
+
+  return handleGetBalance;
+}
+
+// Sign a message
+export function useSignMessageHandler() {
+  const { signMessageAsync } = useSignMessage();
+  const { address, isConnected } = useAppKitAccount();
+
+  const handleSignMsg = async () => {
+    if (!isConnected) throw new Error('Wallet not connected');
+    const msg = 'Hello Reown AppKit!';
+    const sig = await signMessageAsync({ message: msg, account: address as Address });
+    console.log('Signature:', sig);
+  };
+
+  return handleSignMsg;
+}
+
+// Send a transaction
+export function useSendTransactionHandler() {
+  const { sendTransaction } = useSendTransaction();
+  const { isConnected } = useAppKitAccount();
+
+  const handleSendTx = async () => {
+    if (!isConnected) throw new Error('Wallet not connected');
+    try {
+      await sendTransaction({
+        to: contractAddress as Address,
+        value: parseUnits('0.0001', 9), // Corrected decimals for gwei
+      });
+    } catch (err) {
+      console.error('Error sending transaction:', err);
+    }
+  };
+
+  return handleSendTx;
 }
 

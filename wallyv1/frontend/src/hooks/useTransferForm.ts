@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useAuth } from '../hooks/useAuth';
-import { transferTokens } from '../utils/api';
-import { validateTokenAddress, validateTransferAmount } from '../utils/validators';
-import { roundRobinTokenResolve } from '../utils/tokenSearch';
-import { logger } from '../utils/logger';
+import { useAuth } from '../hooks/useAuth.ts';
+import { transferTokens } from '../utils/api.ts';
+import { validateTokenAddress, validateTransferAmount } from '../utils/validators.ts';
+import { roundRobinTokenResolve } from '../utils/tokenSearch.ts';
+import { logger } from '../utils/logger.ts';
 
 export function useTransferForm() {
     const { user } = useAuth();

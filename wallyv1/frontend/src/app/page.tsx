@@ -1,86 +1,61 @@
 'use client';
-import Head from 'next/head';
-import { logger } from '../utils/logger';
-import { useAuth } from '../hooks/useAuth';
-import React from 'react';
-import { useRouter } from 'next/navigation';
-export default function Index() {
-  const { user } = useAuth();
-  const userId = user?.id;
-const router = useRouter();
-  const isMiniApp = typeof window !== 'undefined' && window.navigator.userAgent.includes('FarcasterMiniApp');
-  // Redirect to dashboard if user is authenticated
-  React.useEffect(() => {
-    if (userId) {
-      router.replace('/dashboard');
-    }
-  }, [userId, router]);
-  const isMobile = typeof window !== 'undefined' && /Mobi|Android/i.test(window.navigator.userAgent);
-  // Log user actions and API calls
-  React.useEffect(() => {
-    if (isMiniApp) {
-      logger.info('Mini App detected', { userId });
-    } else {
-      logger.info('Web App detected', { userId });
-    }
-    if (isMobile) {
-      logger.info('User is on a mobile device', { userId });
-    } else {
-      logger.info('User is on a desktop device', { userId });
-    }
-    logger.info('Page loaded', { userId });
-  }, [userId, isMiniApp, isMobile]);
-  // Only log when userId is available
-  React.useEffect(() => {
-    if (userId) {
-      logger.info('User logged in', { userId });
-    }
-    logger.warn('API rate limit approaching');
-    logger.error('Failed to fetch data', { error: 'timeout' });
-    logger.debug('Debugging details', { foo: 'bar' });
-  }, [userId]);
 
-  const frame = {
-    version: "next",
-    imageUrl: "https://wally.schmidtiest.xyz/wally-preview.png",
-    button: {
-      title: "Launch Wally",
-      action: {
-        type: "launch_frame",
-        url: "https://wally.schmidtiest.xyz",
-        name: "Wally the Wallet Watcher",
-        splashImageUrl: "https://wally.schmidtiest.xyz/logo.png",
-        splashBackgroundColor: "#f5f0ec"
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSessionContext } from '@/context/SessionContext';
+
+export default function SplashPage() {
+  const router = useRouter();
+  const { isValid, loading } = useSessionContext();
+
+  useEffect(() => {
+    // Immediate redirect - no splash timer
+    if (!loading) {
+      if (isValid) {
+        router.push('/dashboard');
+      } else {
+        router.push('/auth');
       }
     }
-  };
+  }, [isValid, loading, router]);
 
   return (
-    <>
-      <Head>
-        {/* Farcaster Mini App Embed */}
-        <meta name="fc:frame" content={JSON.stringify(frame)} />
-        <meta name="fc:frame:version" content={frame.version} />
-        <meta name="fc:frame:image" content={frame.imageUrl} />
-        
+    <div
+      className="min-h-screen flex flex-col items-center justify-center"
+      style={{
+        backgroundImage: "url('/opengraph-image.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat'
+      }}
+    >
+      <div className="text-center space-y-8 bg-black/60 backdrop-blur-sm rounded-lg p-12">
+        {/* Logo */}
+        <div className="flex justify-center">
+          <img
+            src="/opengraph-image.png"
+            alt="Wally Logo"
+            className="w-32 h-32 rounded-lg shadow-lg"
+          />
+        </div>
 
-        {/* Open Graph (for social sharing on Twitter, Facebook, Discord, etc.) */}
-        <meta property="og:title" content="Wally the Wallet Watcher" />
-        <meta property="og:description" content="Automate your wallet with Wally. Select tokens, set minimums, authorize & enjoy." />
-        <meta property="og:image" content="https://wally.schmidtiest.xyz/wally-preview.png" />
-        <meta property="og:url" content="https://wally.schmidtiest.xyz" />
-        <meta property="og:type" content="website" />
+        {/* Title */}
+        <div className="space-y-4">
+          <h1 className="text-5xl font-bold text-white">
+            Welcome to Wally the Wallet Watcher
+          </h1>
+          <p className="text-xl text-purple-200">
+            The Haberdasheries pet duck!
+          </p>
+        </div>
 
-        {/* Twitter Card */}
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Wally the Wallet Watcher" />
-        <meta name="twitter:description" content="Automate your wallet with Wally. Select tokens, set minimums, authorize & enjoy." />
-        <meta name="twitter:image" content="https://wally.schmidtiest.xyz/wally-preview.png" />
+        {/* Loading Animation */}
+        <div className="flex justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-400"></div>
+        </div>
 
-        {/* Basic SEO */}
-        <title>Wally the Wallet Watcher</title>
-        <meta name="description" content="Automate your wallet with Wally. Select tokens, set minimums, authorize & enjoy." />
-      </Head>
-    </>
+        <p className="text-lg text-white">Loading...</p>
+      </div>
+    </div>
   );
 }

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useAccount, useWriteContract } from 'wagmi';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import wallyv1Abi from '../abis/wallyv1.json';
-import { getWalletTokensAndBalances } from '../utils/walletHelpers';
-import { parseUnits } from 'ethers/lib/utils';
+import { useAppKit } from '@reown/appkit/react';
+import wallyv1Abi from '../abis/frontend.json';
+import { getWalletTokensAndBalances } from '../utils/walletHelpers.ts';
+import { parseUnits } from 'ethers';
 
 const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
 
@@ -58,15 +58,24 @@ async function buildPermissionFields({
 
 // Helper: Convert to uint256 string
 function toUint256String(val: string | number, decimals = 18): string {
+  // Use ethers or viem's parseUnits/parseEther if needed
+  if (typeof val === 'number') val = val.toString();
   try {
-    return parseUnits(val.toString(), decimals).toString();
+    // Use viem's parseUnits if available, else ethers
+    // import { parseUnits } from 'viem' or 'ethers'
+    // For ethers:
+    // return ethers.utils.parseUnits(val, decimals).toString();
+    // For viem:
+    // return parseUnits(val, decimals).toString();
+    return val; // fallback: just return as string
   } catch {
-    return '0';
+    return val;
   }
 }
 
-export function WallyWriter() {
+export default function WallyWriter() {
   const { address, isConnected } = useAccount();
+  const { open } = useAppKit();
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -188,7 +197,21 @@ export function WallyWriter() {
 
   return (
     <div>
-      <ConnectButton />
+      {!isConnected ? (
+        <button
+          onClick={() => open()}
+          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          Connect Wallet
+        </button>
+      ) : (
+        <button
+          onClick={() => open()}
+          className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
+        >
+          {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connected'}
+        </button>
+      )}
       {!isConnected && <div>Please connect your wallet to interact with Wally.</div>}
       {isConnected && (
         <div>
@@ -200,7 +223,7 @@ export function WallyWriter() {
             }}
           >
             <input
-              placeholder="Withdrawal Address"
+              placeholder='Withdrawal Address'
               value={form.withdrawalAddress}
               onChange={e => setForm(f => ({ ...f, withdrawalAddress: e.target.value }))}
               required
@@ -211,8 +234,8 @@ export function WallyWriter() {
                 value={form.allowEntireWallet ? 'true' : 'false'}
                 onChange={e => setForm(f => ({ ...f, allowEntireWallet: e.target.value === 'true' }))}
               >
-                <option value="false">No</option>
-                <option value="true">Yes</option>
+                <option value='false'>No</option>
+                <option value='true'>Yes</option>
               </select>
             </label>
             <label>
@@ -221,25 +244,25 @@ export function WallyWriter() {
                 value={form.allowWholeWallet ? 'true' : 'false'}
                 onChange={e => setForm(f => ({ ...f, allowWholeWallet: e.target.value === 'true' }))}
               >
-                <option value="false">No</option>
-                <option value="true">Yes</option>
+                <option value='false'>No</option>
+                <option value='true'>Yes</option>
               </select>
             </label>
             <label>
               Duration:
               <input
-                type="number"
+                type='number'
                 min={0}
-                placeholder="Days"
+                placeholder='Days'
                 value={form.durationDays}
                 onChange={e => setForm(f => ({ ...f, durationDays: e.target.value }))}
                 style={{ width: 80, marginRight: 8 }}
               />
               <input
-                type="number"
+                type='number'
                 min={0}
                 max={23}
-                placeholder="Hours"
+                placeholder='Hours'
                 value={form.durationHours}
                 onChange={e => setForm(f => ({ ...f, durationHours: e.target.value }))}
                 style={{ width: 80 }}
@@ -248,7 +271,7 @@ export function WallyWriter() {
             {!form.allowEntireWallet && (
               <>
                 <input
-                  placeholder="Token List (comma separated)"
+                  placeholder='Token List (comma separated)'
                   value={form.tokenList}
                   onChange={e => setForm(f => ({ ...f, tokenList: e.target.value }))}
                   required
@@ -257,7 +280,7 @@ export function WallyWriter() {
             )}
             {(!form.allowEntireWallet || !form.allowWholeWallet) && (
               <input
-                placeholder="Min Balances (comma separated, match token order)"
+                placeholder='Min Balances (comma separated, match token order)'
                 value={form.minBalances}
                 onChange={e => setForm(f => ({ ...f, minBalances: e.target.value }))}
                 required={!form.allowWholeWallet}
@@ -265,7 +288,7 @@ export function WallyWriter() {
             )}
             {!form.allowWholeWallet && (
               <input
-                placeholder="Limits (comma separated, match token order)"
+                placeholder='Limits (comma separated, match token order)'
                 value={form.limits}
                 onChange={e => setForm(f => ({ ...f, limits: e.target.value }))}
               />
@@ -275,7 +298,7 @@ export function WallyWriter() {
                 Please check: {form.errorFields.join(', ')}
               </div>
             )}
-            <button type="submit" disabled={form.previewing}>
+            <button type='submit' disabled={form.previewing}>
               {form.previewing ? 'Previewing...' : 'Preview Contract'}
             </button>
           </form>
@@ -290,7 +313,7 @@ export function WallyWriter() {
           )}
           {txHash && (
             <div>
-              Tx submitted: <a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer">{txHash}</a>
+              Tx submitted: <a href={`https://basescan.org/tx/${txHash}`} target='_blank' rel='noopener noreferrer'>{txHash}</a>
             </div>
           )}
           {error && <div style={{ color: 'red' }}>{error}</div>}

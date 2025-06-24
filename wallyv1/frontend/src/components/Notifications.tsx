@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../utils/api';
-import { NotificationEventRenderer } from './NotificationEventRenderer';
+import { api } from '../utils/api.ts';
+import { NotificationEventRenderer } from './NotificationEventRenderer.tsx';
 
 interface NotificationsProps {
   userId: string;
@@ -20,7 +20,7 @@ export interface NotificationEvent {
   // ...other fields as needed
 }
 
-export const Notifications = ({ userId }: NotificationsProps): React.ReactElement => {
+function Notifications({ userId }: NotificationsProps) {
   const [events, setEvents] = useState<NotificationEvent[]>([]);
   useEffect(() => {
     api.get(`/api/audit/${userId}`).then(res => setEvents(res.data));
@@ -35,4 +35,6 @@ export const Notifications = ({ userId }: NotificationsProps): React.ReactElemen
       ))}
     </div>
   );
-};
+}
+
+export default Notifications;

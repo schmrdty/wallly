@@ -1,0 +1,1 @@
+Removed TransferForm.tsx and TransferManager.tsx from src/components. No references found in dashboard components.

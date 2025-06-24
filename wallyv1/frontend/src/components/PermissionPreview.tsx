@@ -14,7 +14,7 @@ export const PermissionPreview: React.FC<PermissionPreviewProps> = ({
   preview
 }) => (
   <div>
-    <button type="button" onClick={onPreview} disabled={loading}>
+    <button type='button' onClick={onPreview} disabled={loading}>
       Preview Contract
     </button>
     {showPreview && preview && (

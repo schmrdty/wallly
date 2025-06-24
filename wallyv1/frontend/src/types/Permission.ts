@@ -1,9 +1,9 @@
 export interface Permission {
   withdrawalAddress: string;
   allowEntireWallet: boolean;
-  expiresAt: number;
+  expiresAt: string; // Changed from number to string to match ContractPermission
   isActive: boolean;
   tokenList: string[];
-  minBalances: number[];
-  limits: number[];
+  minBalances: string[]; // Changed from number[] to string[] to match ContractPermission
+  limits: string[]; // Changed from number[] to string[] to match ContractPermission
 }

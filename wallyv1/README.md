@@ -47,3 +47,57 @@ Fork and PRs welcome!
 
 ## License
 MIT License. See LICENSE.
+
+## Testing
+
+This project uses Jest for testing both frontend and backend components.
+
+### Running Tests
+
+To run all tests:
+```bash
+npm test
+```
+
+To run only frontend tests:
+```bash
+npm run test:frontend
+```
+
+To run only backend tests:
+```bash
+npm run test:backend
+```
+
+### Test Structure
+
+- **Frontend Tests**: Located in `frontend/src/__tests__`
+  - Tests for hooks, contexts, utils, etc.
+
+- **Backend Tests**: Located in `backend/src/__tests__`
+  - Tests for services, controllers, middleware, etc.
+
+### Code Coverage
+
+To generate a code coverage report:
+```bash
+npm test -- --coverage
+```
+
+This will generate a coverage report in the `coverage` directory.
+
+## Running Tests
+
+To run the tests, make sure you have installed all dependencies:
+
+1. Install project dependencies:
+   ```bash
+   npm install
+   cd frontend && npm install
+   cd backend && npm install
+   ```
+
+2. Run the tests:
+   ```bash
+   npm test
+   ```

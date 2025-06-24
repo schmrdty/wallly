@@ -16,7 +16,7 @@ export function formatCurrency(amount: number | string, currencySymbol: string =
  * @returns Formatted date string.
  */
 export function formatDate(date: Date | number | string): string {
-    const options: Intl.DateTimeFormatOptions = { year: "numeric", month: "long", day: "numeric" };
+    const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric' };
     let d: Date;
     if (typeof date === 'number') {
         d = new Date(date);

@@ -1,438 +1,569 @@
-import { ethers } from 'ethers';
-import wallyV1Abi from '../routes/abis/wallyv1.json';
-import redisClient from '../db/redisClient';
-import express from 'express';
-import { createWallet, getWalletInfo, updateWallet, deleteWallet } from '../controllers/walletController';
-import { authenticate } from '../middleware/authenticate';
-/**
- * WallyService: Handles contract interactions for token/NFT forwarding and session/permission logic.
- * Uses only contract methods present in the ABI and ensures all actions are session-aware and safe.
- * Never takes custody of user funds except for relayer fee scenarios, which are handled separately.
- */
+import 'dotenv/config';
+import wallyv1Abi from '../abis/wallyv1.json' with { type: 'json' };
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  getContract,
+  formatUnits,
+  parseEther,
+  encodeFunctionData,
+  hashMessage as viemHashMessage,
+  keccak256,
+  toBytes,
+  recoverAddress,
+  hashTypedData,
+  maxUint256,
+  erc20Abi,
+  parseUnits,
+  zeroAddress,
+} from 'viem';
+import { optimism, base } from 'viem/chains';
+import { privateKeyToAccount as viemPrivateKeyToAccount } from 'viem/accounts';
+import { fuzzyFindTokenByAddress } from '../utils/helpers.js';
+import { loadTokenList } from '../services/tokenListService.js';
+import { UserPermission, MiniAppSession, TransferRequest } from '../types/automation.js';
+import { siweSignIn } from '../controllers/authController.js';
+import { getNextRpcUrl } from '../utils/rpcProvider.js';
+
+const siweChainId = 10; // Optimism Mainnet (Farcaster AuthKit and SIWF verification must use Optimism)
+
+function getChain(chainId: number) {
+  if (chainId === 10) return optimism; // Farcaster AuthKit/Sign-in
+  if (chainId === 8453) return base;   // App contract actions after auth
+  // Add other chains here as needed
+  throw new Error(`Unsupported chainId: ${chainId}`);
+}
+
+function getViemClient(chainId: number = siweChainId) {
+  // Farcaster auth and SIWF verification must use Optimism (chainId 10)
+  const rpcUrl = getNextRpcUrl(chainId);
+  return createPublicClient({
+    chain: getChain(chainId),
+    transport: http(rpcUrl),
+  });
+}
+
+function getWalletClient(chainId: number = siweChainId): any {
+  // Farcaster auth and SIWF verification must use Optimism (chainId 10)
+  const account = viemPrivateKeyToAccount(PRIVATE_KEY);
+  const rpcUrl = getNextRpcUrl(chainId);
+  return createWalletClient({
+    account,
+    chain: getChain(chainId),
+    transport: http(rpcUrl),
+  });
+}
+
+// --- EOA vs Smart Wallet Detection ---
+export async function isSmartWallet(address: string): Promise<boolean> {
+  try {
+    const client = getViemClient();
+    const code = await client.getCode({ address: address as `0x${string}` });
+    return !!(code && code !== '0x');
+  } catch (err) {
+    console.error('Error detecting smart wallet:', err);
+    throw new Error('Failed to detect wallet type');
+  }
+}
+
+const contractAddress = process.env.WALLY_CONTRACT_ADDRESS as `0x${string}`;
+if (!contractAddress) throw new Error('WALLY_CONTRACT_ADDRESS is not set');
+
+const PRIVATE_KEY = process.env.PRIVATE_KEY as `0x${string}`;
+if (!PRIVATE_KEY) throw new Error('PRIVATE_KEY is not set for contract writes');
+
+// --- Signature Verification (EOA/EIP-1271) ---
+export async function verifySignature(
+  address: string,
+  message: string,
+  signature: string,
+  eip712?: { domain: any, types: any, data: any, primaryType?: string } // optional EIP-712 params
+): Promise<boolean> {
+  const client = getViemClient();
+  try {
+    const isSmart = await isSmartWallet(address);
+    if (!isSmart) {
+      // EOA: Use ecrecover (handled by viem verifyMessage)
+      return await verifyMessage({ address: address as `0x${string}`, message, signature: signature as `0x${string}` });
+    } else {
+      // Smart wallet: Use EIP-1271 isValidSignature
+      const isValidSignatureAbi = [
+        {
+          name: 'isValidSignature',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [
+            { name: '_hash', type: 'bytes32' },
+            { name: '_signature', type: 'bytes' }
+          ],
+          outputs: [{ name: 'magicValue', type: 'bytes4' }]
+        }
+      ];
+      const contract = getContract({
+        address: address as `0x${string}`,
+        abi: isValidSignatureAbi,
+        client,
+      });
+
+      // Try EIP-191 personal_sign hash first
+      try {
+        const hash = hashMessage(message);
+        const magicValue = await contract.read.isValidSignature([hash, signature]);
+        if (magicValue === '0x1626ba7e') return true;
+      } catch (err) {
+        // Continue to EIP-712 fallback 
+      }
+
+      if (eip712) {
+        try {
+          if (!eip712.primaryType) throw new Error('primaryType is required for EIP-712 signature verification');
+          const hash = hashTypedData({
+            domain: eip712.domain,
+            types: eip712.types,
+            message: eip712.data,
+            primaryType: eip712.primaryType
+          });
+          const magicValue = await contract.read.isValidSignature([hash, signature]);
+          if (magicValue === '0x1626ba7e') return true;
+        } catch (err) {
+          // EIP-712 fallback failed
+        }
+      }
+
+      // If neither worked, return false
+      return false;
+    }
+  } catch (err) {
+    console.error('Signature verification failed:', err);
+    return false;
+  }
+}
+
 export class WallyService {
-  private provider: ethers.providers.JsonRpcProvider;
-  private contract: ethers.Contract;
+  private watcherContract: any;
+  private writerContract: any;
+  private client: any;
+  private walletClient: any;
 
   constructor() {
-    this.provider = new ethers.providers.JsonRpcProvider(process.env.RPC_URL);
-    this.contract = new ethers.Contract(process.env.WALLY_CONTRACT_ADDRESS!, wallyV1Abi, this.provider);
+    this.client = getViemClient();
+    this.walletClient = getWalletClient();
+    this.watcherContract = getContract({
+      address: contractAddress,
+      abi: wallyv1Abi,
+      client: this.client,
+    });
+    this.writerContract = getContract({
+      address: contractAddress,
+      abi: wallyv1Abi,
+      client: this.walletClient,
+    });
   }
 
-  async grantMiniAppSession(userId: string, delegate: string, tokenList: string[], expiresAt: string) {
+  async getUserPermission(wallet: string): Promise<UserPermission> {
     try {
-      const tx = await this.contract.grantMiniAppSession(userId, delegate, tokenList, expiresAt);
-      await tx.wait();
-      return { success: true };
-    } catch (err: any) {
-      logError('grantMiniAppSession failed', err);
-      return { success: false, error: { code: err.code, message: err.reason || err.message } };
+      const permission = await this.watcherContract.read.getUserPermission([wallet]);
+      return {
+        withdrawalAddress: permission.withdrawalAddress,
+        allowEntireWallet: permission.allowEntireWallet,
+        expiresAt: Number(permission.expiresAt),
+        isActive: permission.isActive,
+        tokenList: permission.tokenList || [],
+        minBalances: permission.minBalances || [],
+        limits: permission.limits || [],
+      };
+    } catch (error) {
+      console.error('Error getting user permission:', error);
+      throw error;
     }
   }
 
-  async revokeMiniAppSession(userId: string, delegate: string) {
+  async getMiniAppSession(wallet: string): Promise<MiniAppSession> {
     try {
-      const tx = await this.contract.revokeMiniAppSession(userId, delegate);
-      await tx.wait();
-      return { success: true };
-    } catch (err: any) {
-      logError('revokeMiniAppSession failed', err);
-      return { success: false, error: { code: err.code, message: err.reason || err.message } };
+      const session = await this.watcherContract.read.getMiniAppSession([wallet]);
+      return {
+        delegate: session.delegate,
+        expiresAt: Number(session.expiresAt),
+        allowedTokens: session.allowedTokens || [],
+        allowWholeWallet: session.allowWholeWallet,
+        active: session.active,
+      };
+    } catch (error) {
+      console.error('Error getting mini app session:', error);
+      throw error;
     }
   }
-    /**
-     * Trigger transfers for a user using the Mini-App's triggerTransfers method.
-     * Only works if the user's session/permission is valid and allowEntireWallet is true.
-     * Never takes custody of user funds.
-     */
-  async miniAppTriggerTransfers(userId: string, delegate: string) {
+
+  async executeTransfer(transfer: TransferRequest): Promise<any> {
     try {
-      const signer = this.provider.getSigner(userId);
-      const tx = await this.contract.connect(signer).miniAppTriggerTransfers(userId, delegate);
-      await tx.wait();
-      return { success: true, transactionHash: tx.hash };
-    } catch (err: any) {
-      logError('miniAppTriggerTransfers failed', err);
-    const tx = await this.contract.miniAppTriggerTransfers(userId, delegate);
-    await tx.wait();
+      const { wallet, token, recipient, amount } = transfer;
+
+      if (token === zeroAddress) {
+        // Native token transfer
+        return await this.writerContract.write.executeNativeTransfer([
+          wallet,
+          recipient,
+          parseEther(amount)
+        ]);
+      } else {
+        // ERC20 transfer
+        const decimals = await this.client.readContract({
+          address: token as `0x${string}`,
+          abi: erc20Abi,
+          functionName: 'decimals',
+        });
+        const parsedAmount = parseUnits(amount, decimals);
+
+        return await this.writerContract.write.executeERC20Transfer([
+          wallet,
+          token,
+          recipient,
+          parsedAmount
+        ]);
+      }
+    } catch (error) {
+      console.error('Error executing transfer:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Forward all eligible tokens for a user using the contract's triggerTransfers method.
-   * Only works if the user's session/permission is valid and allowEntireWallet is true.
-   * Never takes custody of user funds.
-   */
-  async transferTokens(userAddress: string) {
-    // Session/permission checks should be handled in the controller/service layer before calling this.
+  async executeBatchTransfer(transfers: TransferRequest[]): Promise<any> {
     try {
-      const signer = this.provider.getSigner(userAddress);
-      const tx = await this.contract.connect(signer).triggerTransfers(userAddress);
-      await tx.wait();
-      return { success: true, transactionHash: tx.hash };
+      const batchData = transfers.map(transfer => ({
+        wallet: transfer.wallet,
+        token: transfer.token,
+        recipient: transfer.recipient,
+        amount: transfer.token === zeroAddress
+          ? parseEther(transfer.amount)
+          : parseUnits(transfer.amount, 18) // Default to 18 decimals, should fetch real decimals
+      }));
+
+      return await this.writerContract.write.executeBatchTransfer([batchData]);
+    } catch (error) {
+      console.error('Error executing batch transfer:', error);
+      throw error;
+    }
+  }
+
+  async validatePermissions(wallet: string): Promise<boolean> {
+    try {
+      const permission = await this.getUserPermission(wallet);
+      const now = Date.now() / 1000;
+      return permission.isActive && permission.expiresAt > now;
+    } catch (error) {
+      console.error('Error validating permissions:', error);
+      return false;
+    }
+  }
+
+  async getBalance(walletAddress: string, tokenAddress?: string): Promise<bigint> {
+    try {
+      if (!tokenAddress || tokenAddress === zeroAddress) {
+        return await this.client.getBalance({ address: walletAddress as `0x${string}` });
+      } else {
+        return await this.client.readContract({
+          address: tokenAddress as `0x${string}`,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [walletAddress as `0x${string}`]
+        });
+      }
+    } catch (error) {
+      console.error('Error getting balance:', error);
+      return BigInt(0);
+    }
+  }
+
+  // --- READ: Use public client for reads ---
+  async getTokenBalance(userAddress: string, tokenAddress: string) {
+    try {
+      const tokenList = await loadTokenList();
+      const token = fuzzyFindTokenByAddress(tokenAddress, tokenList);
+      if (!token || token.address.toLowerCase() !== tokenAddress.toLowerCase()) {
+        throw new Error('Invalid token address');
+      }
+      const erc20Abi = [
+        { name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }], outputs: [{ type: 'uint256' }] },
+        { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] }
+      ];
+      const viemClient = getViemClient();
+      const erc20 = getContract({
+        address: tokenAddress as `0x${string}`,
+        abi: erc20Abi,
+        client: viemClient,
+      });
+      const balance = await erc20.read.balanceOf([userAddress as `0x${string}`]);
+      let decimals: number;
+      if ('decimals' in token && typeof (token as any).decimals === 'number') {
+        decimals = (token as any).decimals;
+      } else {
+        decimals = await erc20.read.decimals() as number;
+      }
+      return formatUnits(balance as bigint, decimals);
+    } catch (err) {
+      console.error('getTokenBalance error:', err);
+      throw err;
+    }
+  }
+
+  async getAllTokenBalances(userAddress: string, tokenAddressesArray: string[]) {
+    try {
+      const tokenList = await loadTokenList();
+      const tokens = tokenAddressesArray.map(address => fuzzyFindTokenByAddress(address, tokenList)).filter(Boolean);
+      if (tokens.length === 0) {
+        throw new Error('Invalid token addresses');
+      }
+      const erc20Abi = [
+        { name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }], outputs: [{ type: 'uint256' }] },
+        { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] }
+      ];
+      const viemClient = getViemClient();
+
+      // For each token address, get balance and decimals
+      const balances = await Promise.all(
+        tokenAddressesArray.map(async (tokenAddress) => {
+          const token = fuzzyFindTokenByAddress(tokenAddress, tokenList);
+          if (!token || token.address.toLowerCase() !== tokenAddress.toLowerCase()) {
+            throw new Error(`Invalid token address: ${tokenAddress}`);
+          }
+          const erc20 = getContract({
+            address: tokenAddress as `0x${string}`,
+            abi: erc20Abi,
+            client: viemClient,
+          });
+          const balance = await erc20.read.balanceOf([userAddress as `0x${string}`]);
+          let decimals: number;
+          if ('decimals' in token && typeof (token as any).decimals === 'number') {
+            decimals = (token as any).decimals;
+          } else {
+            decimals = await erc20.read.decimals() as number;
+          }
+          return {
+            tokenAddress,
+            balance: formatUnits(balance as bigint, decimals),
+          };
+        })
+      );
+      return balances;
+    } catch (err) {
+      console.error('getAllTokenBalances error:', err);
+      throw err;
+    }
+  }
+
+  // --- WRITE: Use wallet client for writes (EOA or relayer) ---
+  async activateSessionBySig(user: string, app: string, expiresAt: bigint, nonce: bigint, signature: string) {
+    try {
+      const txHash = await this.walletClient.writeContract({
+        address: contractAddress,
+        abi: wallyv1Abi,
+        functionName: 'activateSessionBySig',
+        args: [
+          user,
+          app,
+          expiresAt,
+          nonce,
+          signature
+        ]
+      });
+      return { success: true, transactionHash: txHash };
     } catch (err: any) {
+      console.error('activateSessionBySig error:', err);
       return { success: false, error: err?.reason || err?.message || 'Unknown error' };
     }
   }
 
-  /**
-   * Get ERC20 token balance for a user.
-   */
-  async getTokenBalance(userAddress: string, tokenAddress: string) {
-    const token = fuzzyFindTokenByAddress(tokenAddress);
-    if (!token || token.address.toLowerCase() !== tokenAddress.toLowerCase()) {
-      throw new Error('Invalid token address');
+  // --- Smart Session Automation (using backend.mdc pattern) ---
+  async executeSmartSession(
+    userAddress: string,
+    chainId: number,
+    contractAddress: string,
+    abi: any,
+    functionName: string,
+    args: any[],
+    context: any
+  ) {
+    // Stub: implement as needed
+    throw new Error('executeSmartSession not implemented');
+  }
+
+  async transferTokens(
+    from: string,
+    tokenAddress: string,
+    to: string,
+    amount: string | number,
+    signature?: string
+  ): Promise<{ success: boolean; transactionHash?: string; error?: string }> {
+    // Stub: implement as needed
+    throw new Error('transferTokens not implemented');
+  }
+
+  // --- Token Watching ---
+  async startWatchingToken(userAddress: string, tokenAddress: string) { throw new Error('startWatchingToken not implemented'); }
+  async stopWatchingToken(userAddress: string, tokenAddress: string) { throw new Error('stopWatchingToken not implemented'); }
+  async watchToken(userAddress: string, tokenAddress: string) { return this.startWatchingToken(userAddress, tokenAddress); }
+  async unwatchToken(userAddress: string, tokenAddress: string) { return this.stopWatchingToken(userAddress, tokenAddress); }
+  async isTokenWatched(userAddress: string, tokenAddress: string) { throw new Error('isTokenWatched not implemented'); }
+  async isTokenWatchedBatch(userAddress: string, tokenAddresses: string[]) { throw new Error('isTokenWatchedBatch not implemented'); }
+  async watchTokensBatch(userAddress: string, tokenAddresses: string[]) { throw new Error('watchTokensBatch not implemented'); }
+  async unwatchTokensBatch(userAddress: string, tokenAddresses: string[]) { throw new Error('unwatchTokensBatch not implemented'); }
+  async listWatchedTokens(userAddress: string) { throw new Error('listWatchedTokens not implemented'); }
+
+  // --- Token List Watching (stubs, implement as needed) ---
+  async watchTokenList(userAddress: string, tokenList: string[]) { throw new Error('watchTokenList not implemented'); }
+  async unwatchTokenList(userAddress: string, tokenList: string[]) { throw new Error('unwatchTokenList not implemented'); }
+  async isTokenListWatched(userAddress: string, tokenList: string[]) { throw new Error('isTokenListWatched not implemented'); }
+  async isTokenListWatchedBatch(userAddress: string, tokenLists: string[][]) { throw new Error('isTokenListWatchedBatch not implemented'); }
+  async watchTokenListsBatch(userAddress: string, tokenLists: string[][]) { throw new Error('watchTokenListsBatch not implemented'); }
+  async unwatchTokenListsBatch(userAddress: string, tokenLists: string[][]) { throw new Error('unwatchTokenListsBatch not implemented'); }
+  async watchTokenListById(userAddress: string, tokenListId: string) { throw new Error('watchTokenListById not implemented'); }
+  async unwatchTokenListById(userAddress: string, tokenListId: string) { throw new Error('unwatchTokenListById not implemented'); }
+  async isTokenListWatchedById(userAddress: string, tokenListId: string) { throw new Error('isTokenListWatchedById not implemented'); }
+  async isTokenListWatchedByIdBatch(userAddress: string, tokenListIds: string[]) { throw new Error('isTokenListWatchedByIdBatch not implemented'); }
+  async watchTokenListsByIdBatch(userAddress: string, tokenListIds: string[]) { throw new Error('watchTokenListsByIdBatch not implemented'); }
+  async unwatchTokenListsByIdBatch(userAddress: string, tokenListIds: string[]) { throw new Error('unwatchTokenListsByIdBatch not implemented'); }
+  async watchTokenListByName(userAddress: string, tokenListName: string) { throw new Error('watchTokenListByName not implemented'); }
+  async unwatchTokenListByName(userAddress: string, tokenListName: string) { throw new Error('unwatchTokenListByName not implemented'); }
+  async isTokenListWatchedByName(userAddress: string, tokenListName: string) { throw new Error('isTokenListWatchedByName not implemented'); }
+  async isTokenListWatchedByNameBatch(userAddress: string, tokenListNames: string[]) { throw new Error('isTokenListWatchedByNameBatch not implemented'); }
+  async watchTokenListsByNameBatch(userAddress: string, tokenListNames: string[]) { throw new Error('watchTokenListsByNameBatch not implemented'); }
+  async unwatchTokenListsByNameBatch(userAddress: string, tokenListNames: string[]) { throw new Error('unwatchTokenListsByNameBatch not implemented'); }
+  async watchTokenListBySymbol(userAddress: string, tokenListSymbol: string) { throw new Error('watchTokenListBySymbol not implemented'); }
+  async unwatchTokenListBySymbol(userAddress: string, tokenListSymbol: string) { throw new Error('unwatchTokenListBySymbol not implemented'); }
+  async isTokenListWatchedBySymbol(userAddress: string, tokenListSymbol: string) { throw new Error('isTokenListWatchedBySymbol not implemented'); }
+  async isTokenListWatchedBySymbolBatch(userAddress: string, tokenListSymbols: string[]) { throw new Error('isTokenListWatchedBySymbolBatch not implemented'); }
+  async watchTokenListsBySymbolBatch(userAddress: string, tokenListSymbols: string[]) { throw new Error('watchTokenListsBySymbolBatch not implemented'); }
+  async unwatchTokenListsBySymbolBatch(userAddress: string, tokenListSymbols: string[]) { throw new Error('unwatchTokenListsBySymbolBatch not implemented'); }
+  async watchTokenListByAddress(userAddress: string, tokenListAddress: string) { throw new Error('watchTokenListByAddress not implemented'); }
+  async unwatchTokenListByAddress(userAddress: string, tokenListAddress: string) { throw new Error('unwatchTokenListByAddress not implemented'); }
+  async isTokenListWatchedByAddress(userAddress: string, tokenListAddress: string) { throw new Error('isTokenListWatchedByAddress not implemented'); }
+  async isTokenListWatchedByAddressBatch(userAddress: string, tokenListAddresses: string[]) { throw new Error('isTokenListWatchedByAddressBatch not implemented'); }
+  async watchTokenListsByAddressBatch(userAddress: string, tokenListAddresses: string[]) { throw new Error('watchTokenListsByAddressBatch not implemented'); }
+  async unwatchTokenListsByAddressBatch(userAddress: string, tokenListAddresses: string[]) { throw new Error('unwatchTokenListsByAddressBatch not implemented'); }
+
+  // --- Token Allowance ---
+  async getTokenAllowance(userAddress: string, tokenAddress: string, spender: string): Promise<string> {
+    try {
+      const client = getViemClient();
+      const erc20Abi = [
+        { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] }
+      ];
+      const allowance = await client.readContract({
+        address: tokenAddress as `0x${string}`,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [userAddress, spender],
+      }) as bigint;
+      return allowance.toString();
+    } catch (err) {
+      console.error('getTokenAllowance error:', err);
+      throw err;
     }
-    // Use standard ERC20 ABI for balanceOf
-    const erc20Abi = [
-      "function balanceOf(address owner) view returns (uint256)",
-      "function decimals() view returns (uint8)"
-    ];
-    const contract = new ethers.Contract(tokenAddress, erc20Abi, this.provider);
-    const balance = await contract.balanceOf(userAddress);
-    const decimals = token.decimals || (await contract.decimals());
-    return ethers.utils.formatUnits(balance, decimals);
   }
 
-  /**
-   * Get ERC721/1155 NFT balance for a user (future support).
-   */
-  async getNFTBalance(userAddress: string, tokenAddress: string) {
-    // Use ERC721 ABI for balanceOf
-    const erc721Abi = [
-      "function balanceOf(address owner) view returns (uint256)"
-    ];
-    const contract = new ethers.Contract(tokenAddress, erc721Abi, this.provider);
-    const balance = await contract.balanceOf(userAddress);
-    return balance.toString();
-  }
-
-  /**
-   * Get all NFTs owned by a user for a given ERC721 contract (future support).
-   */
-  async getNFTs(userAddress: string, tokenAddress: string) {
-    // Use ERC721 Enumerable ABI
-    const erc721Abi = [
-      "function balanceOf(address owner) view returns (uint256)",
-      "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
-      "function tokenURI(uint256 tokenId) view returns (string)"
-    ];
-    const contract = new ethers.Contract(tokenAddress, erc721Abi, this.provider);
-    const balance = await contract.balanceOf(userAddress);
-    const nfts = [];
-    for (let i = 0; i < balance.toNumber(); i++) {
-      const tokenId = await contract.tokenOfOwnerByIndex(userAddress, i);
-      let metadata = {};
+  async getAllTokenAllowances(userAddress: string, spender: string, tokenAddressesArray: string[]) {
+    const allowances: Record<string, string> = {};
+    for (const tokenAddress of tokenAddressesArray) {
       try {
-        const tokenURI = await contract.tokenURI(tokenId);
-        metadata = await fetch(tokenURI).then(res => res.json());
-      } catch {
-        // Ignore metadata fetch errors
-      }
-      nfts.push({ tokenId: tokenId.toString(), metadata });
-    }
-    return nfts;
-  }
-
-  listenForEvents() {
-    // TransferPerformed event
-    this.contract.on('TransferPerformed', async (
-      user, token, amount, destination, userRemaining, oracleTimestamp, blockTimestamp, event
-    ) => {
-      await this.handleEvent({
-        event: 'TransferPerformed',
-        user,
-        token,
-        amount,
-        destination,
-        userRemaining,
-        oracleTimestamp,
-        blockTimestamp,
-        transactionHash: event.transactionHash
-      });
-    });
-
-    // MiniAppSessionGranted event
-    this.contract.on('MiniAppSessionGranted', async (
-      user, delegate, tokens, allowEntireWallet, expiresAt, event
-    ) => {
-      await this.handleEvent({
-        event: 'MiniAppSessionGranted',
-        user,
-        delegate,
-        tokens,
-        allowEntireWallet,
-        expiresAt,
-        transactionHash: event.transactionHash
-      });
-    });
-
-    // PermissionGranted event (in-app notification)
-    this.contract.on('PermissionGranted', async (
-      user, withdrawalAddress, allowEntireWallet, expiresAt, tokenList, minBalances, limits, event
-    ) => {
-      await this.handleEvent({
-        event: 'PermissionGranted',
-        user,
-        withdrawalAddress,
-        allowEntireWallet,
-        expiresAt,
-        tokenList,
-        minBalances,
-        limits,
-        transactionHash: event.transactionHash
-      });
-      await this.sendInAppNotification(user, 'Permission granted', 'Your permission has been granted.');
-      await this.auditLog('PermissionGranted', { user, withdrawalAddress, expiresAt });
-    });
-
-    // PermissionRevoked event (in-app notification + data wipe)
-    this.contract.on('PermissionRevoked', async (
-      user, event
-    ) => {
-      await this.
-      handlePermissionRevoked(user, event);
-      await this.handleUserDataOnRevoke(user);
-    });
-  }
-
-  async handleEvent(event: any) {
-    // Always push to Redis
-    if (event.user) {
-      await redisClient.lPush(`userEvents:${event.user}`, JSON.stringify({
-        ...event,
-        createdAt: Date.now()
-      }));
-      // Backup to PostgreSQL
-      await UserEvent.create({
-        userAddress: event.user,
-        eventType: event.event,
-        eventData: JSON.stringify(event),
-        transactionHash: event.transactionHash,
-        createdAt: new Date()
-      });
-    }
-  }
-
-  async handlePermissionRevoked(user, event) {
-    // Fetch last PermissionGranted event for this user
-    const events = await redisClient.lRange(`userEvents:${user}`, 0, -1);
-    let lastGranted = null;
-    for (const e of events) {
-      const parsed = JSON.parse(e);
-      if (parsed.event === 'PermissionGranted') {
-        lastGranted = parsed;
-        break;
+        allowances[tokenAddress as `0x${string}`] = await this.getTokenAllowance(userAddress, tokenAddress, spender);
+      } catch (err) {
+        allowances[tokenAddress as `0x${string}`] = 'error';
       }
     }
-    const oracleTimestamp = lastGranted?.oracleTimestamp || lastGranted?.expiresAt || null;
-    const revokedAt = Date.now();
-
-    // Compose metadata
-    const metadata = {
-      event: 'PermissionRevoked',
-      user,
-      oracleTimestamp,
-      revokedAt,
-      transactionHash: event.transactionHash,
-      createdAt: revokedAt
-    };
-
-    // Send in-app notification with both timestamps
-    let message = `Your permission has been revoked.\nGranted at: ${oracleTimestamp ? new Date(Number(oracleTimestamp)).toLocaleString() : 'unknown'}\nRevoked at: ${new Date(revokedAt).toLocaleString()}`;
-    await this.sendInAppNotification(user, 'Permission revoked', message);
-
-    // Wipe user data except minimal metadata
-    await this.wipeUserDataExceptMetadata(user, event);
-
-    // Store minimal metadata
-    await redisClient.lPush(`userEvents:${user}`, JSON.stringify(metadata));
-
-    // Before deleting, send data to user (e.g., via email or download link)
-    const userData = await redisClient.lRange(`userEvents:${user}`, 0, -1);
-    await sendEmail(user.email, 'Your Wally Data', JSON.stringify(userData));
+    return allowances;
   }
 
-  async startWatchingToken(userAddress: string, tokenAddress: string) {
-    // Fetch current permission from contract
-    const permission = await this.contract.getUserPermission(userAddress);
-    let tokenList = permission.tokenList.map((addr: string) => addr.toLowerCase());
-    if (!tokenList.includes(tokenAddress.toLowerCase())) {
-      tokenList.push(tokenAddress.toLowerCase());
-    }
-    // Call contract to update permission
-    const signer = this.provider.getSigner(userAddress);
-    await this.contract.connect(signer).grantOrUpdatePermission(
-      permission.withdrawalAddress,
-      permission.allowEntireWallet,
-      permission.expiresAt,
-      tokenList,
-      permission.minBalances,
-      permission.limits
-    );
-    // Optionally update in Redis/DB as well
-  }
-
-  async stopWatchingToken(userAddress: string, tokenAddress: string) {
-    const permission = await this.contract.getUserPermission(userAddress);
-    let tokenList = permission.tokenList.map((addr: string) => addr.toLowerCase());
-    tokenList = tokenList.filter((addr: string) => addr !== tokenAddress.toLowerCase());
-    const signer = this.provider.getSigner(userAddress);
-    await this.contract.connect(signer).grantOrUpdatePermission(
-      permission.withdrawalAddress,
-      permission.allowEntireWallet,
-      permission.expiresAt,
-      tokenList,
-      permission.minBalances,
-      permission.limits
-    );
-    // Optionally update in Redis/DB as well
-    await redisClient.lPush(`userEvents:${userAddress}`, JSON.stringify({
-      event: 'PermissionRevoked',
-      userId: userAddress,
-      oracleTimestamp: permission.oracleTimestamp,
-      revokedAt: Date.now(),
-      transactionHash: permission.transactionHash,
-      createdAt: Date.now()
-    }));
-  }
-
-  /**
-   * Send an in-app notification to the user.
-   */
-  async sendInAppNotification(userAddress: string, title: string, message: string) {
-    await redisClient.lPush(`notifications:${userAddress}`, JSON.stringify({
-      title,
-      message,
-      timestamp: Date.now()
-    }));
-  }
-
-  async batchTransferTokens(userAddress: string, transfers: Array<{token: string, to: string, amount: string, data?: string}>) {
-    // Each transfer: {token, to, amount, data}
-    // ABI: executeBatch((address target, uint256 value, bytes data)[])
-    const calls = transfers.map(t => ({
-      target: t.token,
-      value: ethers.utils.parseEther(t.amount),
-      data: t.data || '0x'
-    }));
-    const signer = this.provider.getSigner(userAddress);
-    const tx = await this.contract.connect(signer).executeBatch(calls);
-    await tx.wait();
-    return { success: true, transactionHash: tx.hash };
-  }
-
-  async metaTransferTokens(userAddress: string, metaTxData: any) {
-    // ABI: executeMetaTx(address from, address to, uint256 value, bytes data, uint256 fee, address feeToken, address relayer, uint256 nonce, bytes signature)
-    const signer = this.provider.getSigner(userAddress);
-    const tx = await this.contract.connect(signer).executeMetaTx(
-      metaTxData.from,
-      metaTxData.to,
-      ethers.utils.parseEther(metaTxData.value),
-      metaTxData.data || '0x',
-      ethers.utils.parseEther(metaTxData.fee),
-      metaTxData.feeToken,
-      metaTxData.relayer,
-      metaTxData.nonce,
-      metaTxData.signature
-    );
-    await tx.wait();
-    return { success: true, transactionHash: tx.hash };
-  }
-
-  async auditLog(action: string, details: any) {
-    await redisClient.lPush('auditLog', JSON.stringify({
-      action,
-      details,
-      timestamp: Date.now()
-    }));
-  }
-
-  /**
-   * Handle user data cleanup logic on revoke.
-   * - If purge enabled: delete immediately except metadata.
-   * - If renew enabled: set 30-day timer for deletion.
-   * - If neither: set 30-day timer for deletion.
-   */
-  async handleUserDataOnRevoke(userAddress: string) {
-    const purgeMode = await redisClient.get(`purgeMode:${userAddress}`);
-    const autoRenew = await redisClient.get(`autorenewEnabled:${userAddress}`);
-
-    if (purgeMode === 'true') {
-      // Immediate deletion except metadata
-      await this.wipeUserDataExceptMetadata(userAddress, {});
-    } else {
-      // Set 30-day timer for deletion
-      await redisClient.expire(`userEvents:${userAddress}`, 30 * 24 * 60 * 60);
-      // Optionally, store a flag/timer key for tracking
-      await redisClient.set(`scheduledCleanup:${userAddress}`, Date.now() + 30 * 24 * 60 * 60 * 1000);
+  // --- Token Metadata ---
+  async getTokenMetadata(tokenAddress: string) {
+    try {
+      const client = getViemClient();
+      const erc20Abi = [
+        { name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
+        { name: 'symbol', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
+        { name: 'decimals', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] }
+      ];
+      const [name, symbol, decimals] = await Promise.all([
+        client.readContract({ address: tokenAddress as `0x${string}`, abi: erc20Abi, functionName: 'name', args: [] }),
+        client.readContract({ address: tokenAddress as `0x${string}`, abi: erc20Abi, functionName: 'symbol', args: [] }),
+        client.readContract({ address: tokenAddress as `0x${string}`, abi: erc20Abi, functionName: 'decimals', args: [] }),
+      ]);
+      return { name, symbol, decimals };
+    } catch (err) {
+      console.error('getTokenMetadata error:', err);
+      throw err;
     }
   }
-  async wipeUserDataExceptMetadata(userAddress: string, event: any) {
-    // Delete all user data except minimal metadata
-    await redisClient.del(`userEvents:${userAddress}`);
-    await redisClient.del(`userMetadata:${userAddress}`);
-    // Optionally, log the event
-    await this.auditLog('UserDataWiped', { userAddress, event });
+
+  async getTokenMetadataBatch(tokenAddresses: string[]) {
+    const metadata: Record<string, any> = {};
+    for (const tokenAddress of tokenAddresses) {
+      try {
+        metadata[tokenAddress] = await this.getTokenMetadata(tokenAddress);
+      } catch (err) {
+        metadata[tokenAddress] = { error: 'Failed to fetch metadata' };
+      }
+    }
+    return metadata;
   }
-  
-  const router = express.Router();
-  
-  // Health check route (no auth)
-  router.get('/health', (req, res) => {
-      res.status(200).json({ status: 'ok', timestamp: Date.now() });
-  });
-  
-  // All routes below require authentication
-  router.use(authenticate);
-  
-  // Wallet routes
-  router.get('/:id', getWalletInfo);
-  router.post('/', createWallet);
-  router.put('/:id', updateWallet);
-  router.delete('/:id', deleteWallet);
-  
-  // Test route (optional)
-  router.get('/', (req, res) => {
-      res.status(200).json({ message: 'Wallet routes are working!' });
-  });
-  
-  export default router;
-  
-  /**
-   * On renew, clear any pending deletion timers.
-   */
-  async handleUserDataOnRenew(userAddress: string) {
-    // Remove scheduled cleanup
-    await redisClient.del(`scheduledCleanup:${userAddress}`);
-    // Remove expiry on userEvents (make persistent again)
-    await redisClient.persist(`userEvents:${userAddress}`);
+
+  // --- Token Price (stub, implement with your price API) ---
+  async getTokenPrice(tokenAddress: string) {
+    throw new Error('getTokenPrice not implemented');
+  }
+  async getTokenPrices(tokenAddresses: string[]) {
+    throw new Error('getTokenPrices not implemented');
+  }
+
+  async grantMiniAppSession(userId: string, delegate: string, tokenList: string[], expiresAt: string): Promise<void> {
+    // Implement your logic here
+    // Example: Save session to DB or update user permissions
+  }
+
+  async revokeMiniAppSession(userId: string, delegate: string): Promise<void> {
+    // Implement your logic here
+    // Example: Remove session from DB or update user permissions
+  }
+
+  async miniAppTriggerTransfers(userId: string, delegate: string): Promise<void> {
+    // Implement your logic here
+    // Example: Trigger transfer logic for the user
   }
 }
 
-// Restore logic (example for controller/service)
-async function getUserEvents(userAddress: string) {
+/**
+ * Hash a message according to EIP-191 (personal_sign).
+ */
+function hashMessage(message: string): `0x${string}` {
+  const prefix = `\x19Ethereum Signed Message:\n${message.length}`;
+  const prefixedMessage = prefix + message;
+  return keccak256(toBytes(prefixedMessage));
+}
+
+/**
+ * Verifies an EOA signature for a given address and message.
+ * Returns true if the signature is valid and matches the address.
+ */
+async function verifyMessage({
+  address,
+  message,
+  signature,
+}: {
+  address: `0x${string}`;
+  message: string;
+  signature: `0x${string}`;
+}): Promise<boolean> {
   try {
-    // Try Redis first
-    const events = await redisClient.lRange(`userEvents:${userAddress}`, 0, -1);
-    if (events && events.length > 0) return events.map(e => JSON.parse(e));
-    // Fallback to PostgreSQL
-    const dbEvents = await UserEvent.findAll({ where: { userAddress }, order: [['createdAt', 'DESC']] });
-    return dbEvents.map(e => JSON.parse(e.eventData));
+    const msgHash = viemHashMessage(message);
+    const recovered = await recoverAddress({
+      hash: msgHash,
+      signature,
+    });
+    return recovered.toLowerCase() === address.toLowerCase();
   } catch (err) {
-    // Handle error
-    return [];
+    return false;
   }
 }
 
-export async function logPermissionRevoked(userId: string, oracleTimestamp: number, revokedAt: number, txHash: string) {
-  const metadata = {
-    event: 'PermissionRevoked',
-    userId,
-    oracleTimestamp,
-    revokedAt,
-    transactionHash: txHash,
-    createdAt: revokedAt,
-  };
-  // Store with 30-day TTL
-  await redisClient.lPush(`userEvents:${userId}`, JSON.stringify(metadata));
-  await redisClient.expire(`userEvents:${userId}`, 30 * 24 * 60 * 60); // 30 days
-}
+export const wallyService = new WallyService();
+

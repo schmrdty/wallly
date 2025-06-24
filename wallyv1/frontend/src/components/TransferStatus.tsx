@@ -1,17 +1,24 @@
 import React from 'react';
 
 interface TransferStatusProps {
-    warning?: string;
-    status?: string | null;
+  status: 'idle' | 'pending' | 'success' | 'error';
+  message?: string;
 }
 
-export const TransferStatus: React.FC<TransferStatusProps> = ({ warning, status }) => (
-    <>
-        {warning && <div style={{ color: 'orange' }}>{warning}</div>}
-        {status && (
-            <div style={{ marginTop: 8, color: status.includes('failed') ? 'red' : 'green' }}>
-                {status}
-            </div>
-        )}
-    </>
-);
+export function TransferStatus({ status, message }: TransferStatusProps) {
+  if (status === 'idle') return null;
+
+  const statusStyles = {
+    pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    success: 'bg-green-100 text-green-800 border-green-200',
+    error: 'bg-red-100 text-red-800 border-red-200'
+  };
+
+  return (
+    <div className={`p-3 rounded-md border ${statusStyles[status]}`}>
+      <p className="text-sm">{message || `Transfer ${status}`}</p>
+    </div>
+  );
+}
+
+export default TransferStatus;

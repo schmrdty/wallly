@@ -1,6 +1,6 @@
-import axios from "axios";
-import levenshtein from "js-levenshtein";
-import { logger } from "./logger";
+import axios from 'axios';
+import levenshtein from 'js-levenshtein';
+import { logger } from './logger';
 
 /**
  * Token type definition.
@@ -17,7 +17,7 @@ const IPFS_LISTS: string[] = [
   process.env.NEXT_PUBLIC_IPFS_LIST2,
   process.env.NEXT_PUBLIC_IPFS_LIST3,
   process.env.NEXT_PUBLIC_IPFS_LIST4,
-].filter((v): v is string => typeof v === "string" && v.length > 0);
+].filter((v): v is string => typeof v === 'string' && v.length > 0);
 
 /**
  * Helper: Find a token by symbol, name, or address (case-insensitive).
@@ -87,7 +87,7 @@ export async function roundRobinTokenResolve(input: string): Promise<{
   const inputLower = inputTrim.toLowerCase();
 
   // $SYMBOL search
-  if (inputTrim.startsWith("$")) {
+  if (inputTrim.startsWith('$')) {
     const symbol = inputTrim.slice(1).toLowerCase();
     const found = allTokens.find(
       (t: Token) => t.symbol.toLowerCase() === symbol

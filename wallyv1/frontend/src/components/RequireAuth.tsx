@@ -1,23 +1,17 @@
-import React from "react";
-import { useAuth } from "../hooks/useAuth";
+import React from 'react';
+import { useSession } from '../hooks/useSession.ts';
 
 interface RequireAuthProps {
-  children?: React.ReactNode;
+  children: React.ReactNode;
 }
 
 const RequireAuth: React.FC<RequireAuthProps> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, isLoading } = useSession();
 
-  if (loading) return <div>Loading...</div>;
+  if (isLoading) return <div>Loading...</div>;
   if (!isAuthenticated) return <div>Please sign in to continue.</div>;
-  if (isAuthenticated && !children) {
-    return <div>Access Denied: No content available.</div>;
-  }
-  if (isAuthenticated && children) {
-    return <div>{children}</div>;
-  }
 
-  return null;
+  return <>{children}</>;
 };
 
 export default RequireAuth;

@@ -1,12 +1,12 @@
-import React from "react";
-import { formatDate } from '../utils/formatters';
+import React from 'react';
+import { formatDate } from '../utils/formatters.ts';
 
 type WalletEvent = {
   type: string;
   [key: string]: any;
 };
 
-export const WalletEventList: React.FC<{ events: WalletEvent[] }> = ({ events }) => (
+const WalletEventList: React.FC<{ events: WalletEvent[] }> = ({ events }) => (
   <ul>
     {events.map((event, idx) => (
       <li key={idx}>
@@ -16,3 +16,5 @@ export const WalletEventList: React.FC<{ events: WalletEvent[] }> = ({ events })
     ))}
   </ul>
 );
+
+export default WalletEventList;

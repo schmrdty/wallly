@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
-import { ethers } from 'ethers';
-import type { ExternalProvider } from '@ethersproject/providers';
-import { useAuth } from '../hooks/useAuth';
-import { useSession } from '../hooks/useSession';
-import { api } from '../utils/api';
+import { useAccount, useSignMessage, useWalletClient } from 'wagmi';
+import { useAuth } from '../hooks/useAuth.ts';
+import { useSession } from '../hooks/useSession.ts';
+import { api } from '../utils/api.ts';
 
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'wally.schmidtiest.xyz';
-const SIWE_URI = process.env.NEXT_PUBLIC_SIWE_URI || `https://${DOMAIN}/login`;
+const SIWE_URI = process.env.NEXT_PUBLIC_SIWE_URI || `https://${DOMAIN}/auth`;
 
 export function useAuthForm() {
-    const { signInWithEthereum } = useAuth();
+    const { signInWithEthereum: signInWithEthereumWagmi } = useAuth();
     const { onLogin } = useSession();
+    const { address, isConnected } = useAccount();
+    const { signMessageAsync } = useSignMessage();
+    const { data: walletClient } = useWalletClient();
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [nonce, setNonce] = useState<string | null>(null);
@@ -21,50 +23,48 @@ export function useAuthForm() {
             .catch(() => setNonce(null));
     }, []);
 
-    const handleSignIn = async () => {
-        setLoading(true);
-        setError(null);
+    const signInWithEthereum = async (nonce: string) => {
+        if (!address || !isConnected) throw new Error('Wallet not connected');
+        const message = `Sign this message to authenticate. Nonce: ${nonce}`;
+
         try {
-            if (!nonce) throw new Error('Nonce not loaded');
-            if (!window.ethereum) throw new Error('No Ethereum provider found');
-            const provider = new ethers.providers.Web3Provider(window.ethereum as ExternalProvider);
-            await provider.send('eth_requestAccounts', []);
-            const signer = provider.getSigner();
-            const address = await signer.getAddress();
+            setLoading(true);
+            setError(null);
 
-            const siweMessage = [
-                `${DOMAIN} wants you to sign in with your Ethereum account:`,
-                address,
-                '',
-                `URI: ${SIWE_URI}`,
-                `Version: 1`,
-                `Chain ID: 1`,
-                `Nonce: ${nonce}`,
-                `Issued At: ${new Date().toISOString()}`
-            ].join('\n');
+            const signature = await signMessageAsync({ message });
 
-            const signature = await signer.signMessage(siweMessage);
-
-            const loginRes = await api.post('/login', {
-                message: siweMessage,
-                signature
+            // Call the backend to verify and create session
+            const response = await api.post('/api/auth/ethereum', {
+                message,
+                signature,
+                address
             });
 
-            const { sessionId, address: userAddress, fid } = loginRes.data;
-            onLogin(sessionId);
-            signInWithEthereum({ walletAddress: userAddress, fid });
+            if (response.data.sessionId) {
+                // Fix: onLogin expects only sessionId, not user data
+                onLogin(response.data.sessionId);
+                return response.data;
+            }
 
+            throw new Error('Invalid response from server');
         } catch (err: any) {
-            setError(err.message || 'Sign-in failed');
+            setError(err.message || 'Authentication failed');
+            throw err;
         } finally {
             setLoading(false);
         }
     };
 
+    const handleSubmit = (formData: any) => {
+        // Fix: Use the actual signInWithEthereum function that exists
+        return signInWithEthereum(formData.nonce || nonce || '');
+    };
+
     return {
+        signInWithEthereum,
         loading,
         error,
-        handleSignIn,
-        nonceLoaded: !!nonce
+        nonce,
+        handleSubmit,
     };
 }

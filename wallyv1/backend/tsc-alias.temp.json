@@ -1,0 +1,8 @@
+{
+    "scripts": {
+        "postbuild": "tsc-alias"
+    },
+    "devDependencies": {
+        "tsc-alias": "^1.8.8"
+    }
+}

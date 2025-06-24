@@ -1,52 +1,51 @@
 {
   "accountAssociation": {
-    "header": "eyJmaWQiOjkxNTIsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHgwMmVmNzkwRGQ3OTkzQTM1ZkQ4NDdDMDUzRURkQUU5NDBEMDU1NTk2In0",
-    "payload": "eyJkb21haW4iOiJ3YWxseS5zY2htaWR0aWVzdC54eXoifQ==",
-    "signature": "MHgxMGQwZGU4ZGYwZDUwZTdmMGIxN2YxMTU2NDI1MjRmZTY0MTUyZGU4ZGU1MWU0MThiYjU4ZjVmZmQxYjRjNDBiNGVlZTRhNDcwNmVmNjhlMzQ0ZGQ5MDBkYmQyMmNlMmVlZGY5ZGQ0N2JlNWRmNzMwYzUxNjE4OWVjZDJjY2Y0MDFj"
+    "header": "eyJmaWQiOjIxMzMxMCwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDczODVFMUE4MjRBNDA1Y0JCMTNCNjQ4MjlCRjE1MDljZDJBNDcxZjcifQ",
+    "payload": "eyJkb21haW4iOiJ3YWxseS5zY2htaWR0aWVzdC54eXoifQ",
+    "signature": "MHhjOTJiN2IzZDkwMjJkMmRjNjA0ZjU1NDExNGM0YmE3OTA3YzBjY2VlODEwNmYxZWY5Y2QxMzIwMDI1OGZiY2QyMzkwMGNmNGNmNzkwMWM5ZjBjMzllOTUxMjY5Njg3Njk5YWVjZjBjMjNmYmM1ZWE3OGFjOWY3ODQwMTgyMjJlZTFi"
   },
   "frame": {
     "version": "1",
     "name": "Wally the Wallet Watcher",
-    "iconUrl": "https://wally.schmidtiest.xyz/logo.png",
-    "splashImageUrl": "https://wally.schmidtiest.xyz/logo.png",
-    "splashBackgroundColor": "#f5f0ec",
-    "homeUrl": "https://wally.schmidtiest.xyz",
-    "imageUrl": "https://wally.schmidtiest.xyz/opengraph-image.png",
-    "webhookUrl": "https://app.schmidtiest.xyz/api/warpcast-webhook",
-    "buttonTitle": "Launch Wally",
-    "requiredChains": [
-      "eip155:8453"
-    ],
-    "requiredCapabilities": [
-      "actions.signIn",
-      "wallet.getEvmProvider",
-      "actions.transfers",
-      "actions.signTransaction",
-      "actions.signMessage"      
-    ],
-    "subtitle": "Automate your wallet with Wally.",
-    "description": "Select tokens, set minimums, authorize & enjoy.",
-    "screenshotUrls": [
-      "https://wally.schmidtiest.xyz/screenshot1.png"
-    ],
-    "primaryCategory": "wallet",
+    "iconUrl": "https://wally.schmidtiest.xyz/opengraph-image.png",
+    "homeUrl": "https://wally.schmidtiest.xyz/",
+    "webhookUrl": "https://wally.schmidtiest.xyz/api/webhook/neynar",
+    "splashImageUrl": "https://wally.schmidtiest.xyz/opengraph-image.png",
+    "splashBackgroundColor": "#8B5CF6",
+    "subtitle": "wallet automation",
+    "description": "Set transfer rules and monitor your wallets safely.",
+    "tagline": "Your wallet automation tool",
+    "ogTitle": "Wally the Wallet Watcher",
+    "ogDescription": "Non-custodial wallet automation and monitoring",
+    "ogImageUrl": "https://wally.schmidtiest.xyz/opengraph-image.png",
+    "noindex": true,
+    "primaryCategory": "utility",
     "tags": [
       "wallet",
-        "watcher",
       "automation",
-        "non-custodial",
-        "forwarding",
-        "transfers",
-        "tokens",
-      "decentralized",
-      "productivity",
-      "security",
-      "tools"
+      "watcher",
+      "forwarding",
+      "transfers"
     ],
-    "heroImageUrl": "https://wally.schmidtiest.xyz/og.png",
-    "tagline": "Automate your wallet with Wally.",
-    "ogTitle": "Wally the Wallet Watcher",
-    "ogDescription": "Automate your wallet with Wally. Select tokens, set minimums, authorize & enjoy.",
-    "ogImageUrl": "https://wally.schmidtiest.xyz/og.png"
-    }
+    "requiredChains": [
+      "eip155:1",
+      "eip155:10",
+      "eip155:137",
+      "eip155:42161",
+      "eip155:8453",
+      "eip155:666666666",
+      "eip155:7777777"
+    ],
+    "requiredCapabilities": [
+      "wallet.getEthereumProvider",
+      "wallet.getSolanaProvider",
+      "actions.signIn",
+      "actions.sendToken",
+      "actions.swapToken",
+      "actions.viewToken",
+      "actions.openUrl",
+      "actions.setPrimaryButton",
+      "haptics.notificationOccurred"
+    ]
   }
+}

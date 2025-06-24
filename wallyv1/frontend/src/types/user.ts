@@ -1,27 +1,23 @@
 export interface AuthUser {
   id: string;
+  userId?: string;
+  address: string; // Primary wallet address (custody address for Farcaster users)
+  fid?: string | number;
+  walletAddress?: string; // Deprecated - use address instead
+  isValid?: boolean;
   authProvider?: string;
-  username?: string;
-  email?: string;
-  telegram?: string;
-  purgeMode?: boolean;         // Purge Mode On or Off
-  autoRenew?: boolean;         // Auto Renew On or Off
-  reminderOption?: string;     // Reminder Option
-  dateOfFirstGrant?: string;   // Date of First Grant
-  dateOfRevoke?: string;       // Date of Revoke
-
-  // Wallet-related fields
-  watchedWallets?: string[];
-  allowEntireWallet?: boolean;
-  allowedTokenList?: string[];
-  watchedTokens?: string[];
-  destinationAddress?: string;
-
-  // Notification preferences
-  allowEmail?: boolean;
-  allowTelegram?: boolean;
-  allowFarcaster?: boolean;
-  allowFarcasterNotifications?: boolean;
-
-  // Add more fields here ONLY if you use them in your UI/components
+  hasGrantedPermission?: boolean; // Indicates if the user has granted permission for contract interactions
+  displayName?: string;
+  farcasterUser?: {
+    fid: number;
+    username?: string;
+    displayName?: string;
+    email?: boolean; // Whether the user has a verified email on Farcaster
+    pfpUrl?: string;
+    custody?: string; // Farcaster custody address (should match address)
+    verifications?: string[];
+  } | null;
+  // For contract interactions - custody address is automatically the wallet
+  custodyAddress?: string; // Same as address for Farcaster users
+  custody?: string; // Add this for compatibility with backend/session
 }

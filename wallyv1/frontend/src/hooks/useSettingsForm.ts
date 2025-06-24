@@ -1,113 +1,131 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../hooks/useAuth';
-import { api } from '../utils/api';
-import { logger } from '../utils/logger';
+import { useSessionContext } from '@/context/SessionContext';
+import { api } from '@/utils/api';
+import { logger } from '@/utils/logger';
 
 export function useSettingsForm() {
-  const { user } = useAuth();
-  const [purgeMode, setPurgeMode] = useState(false);
-  const [autoRenew, setAutoRenew] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [reminderOption, setReminderOption] = useState('none');
-  const [email, setEmail] = useState('');
-  const [telegram, setTelegram] = useState('');
+  const { user } = useSessionContext();
+  const [purgeMode, setPurgeMode] = useState<boolean>(false);
+  const [autoRenew, setAutoRenew] = useState<boolean>(false);
+  const [status, setStatus] = useState<string>('idle');
+  const [reminderOption, setReminderOption] = useState<string>('none');
+  const [email, setEmail] = useState<string>('');
+  const [telegram, setTelegram] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Load settings with proper error handling
   useEffect(() => {
-    if (user?.id) {
-      api.get(`/api/user/settings/${user.id}`).then(res => {
-        setPurgeMode(res.data.purgeMode || false);
-        setAutoRenew(res.data.autoRenew || false);
-        setReminderOption(res.data.reminderOption || 'none');
-        setEmail(res.data.email || '');
-        setTelegram(res.data.telegram || '');
-      }).catch(err => {
-        setStatus('Failed to load settings.');
-        logger.error('Failed to load settings', { userId: user.id, error: err });
-      });
-    }
+    if (!user?.id) return;
+
+    const loadSettings = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await api.get(`/api/user/settings/${user.id}`);
+
+        if (response.data) {
+          setPurgeMode(response.data.purgeMode || false);
+          setAutoRenew(response.data.autoRenew || false);
+          setReminderOption(response.data.reminderOption || 'none');
+          setEmail(response.data.email || '');
+          setTelegram(response.data.telegram || '');
+        }
+      } catch (error: any) {
+        // Log error but don't break the UI
+        logger.error('Failed to load settings', { userId: user.id, error });
+        setError('Failed to load settings. Using defaults.');
+
+        // Set reasonable defaults
+        setPurgeMode(false);
+        setAutoRenew(false);
+        setReminderOption('none');
+        setEmail('');
+        setTelegram('');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSettings();
   }, [user?.id]);
 
-  const handlePurgeToggle = async (checked: boolean) => {
+  const handlePurgeToggle = async (enabled: boolean) => {
     if (!user?.id) return;
-    if (checked && autoRenew) {
-      setStatus('Disable Auto-Renew before enabling Purge Mode.');
-      return;
-    }
+
     try {
-      await api.post('/api/user/settings', { userId: user.id, purgeMode: checked });
-      setPurgeMode(checked);
-      setStatus('Purge Mode updated!');
-    } catch (err) {
-      setStatus('Failed to update Purge Mode.');
-      logger.error('Failed to update Purge Mode', { userId: user.id, error: err });
+      setPurgeMode(enabled); // Optimistic update
+      await api.post('/api/user/settings', {
+        userId: user.id,
+        purgeMode: enabled
+      });
+    } catch (error: any) {
+      // Revert on error
+      setPurgeMode(!enabled);
+      logger.error('Failed to update Purge Mode', { userId: user.id, error });
+      setError('Failed to update Purge Mode. Please try again.');
     }
   };
 
-  const handleAutoRenewToggle = async (checked: boolean) => {
+  const handleAutoRenewToggle = async (enabled: boolean) => {
     if (!user?.id) return;
-    if (checked && purgeMode) {
-      setStatus('Disable Purge Mode before enabling Auto-Renew.');
-      return;
-    }
+
     try {
-      await api.post('/api/user/settings', { userId: user.id, autoRenew: checked });
-      setAutoRenew(checked);
-      setStatus('Auto-Renew updated!');
-    } catch (err) {
-      setStatus('Failed to update Auto-Renew.');
-      logger.error('Failed to update Auto-Renew', { userId: user.id, error: err });
+      setAutoRenew(enabled); // Optimistic update
+      await api.post('/api/user/settings', {
+        userId: user.id,
+        autoRenew: enabled
+      });
+    } catch (error: any) {
+      // Revert on error
+      setAutoRenew(!enabled);
+      logger.error('Failed to update Auto-Renew', { userId: user.id, error });
+      setError('Failed to update Auto-Renew. Please try again.');
     }
   };
 
-  const handleReminderChange = async (value: string) => {
-    setReminderOption(value);
-    if (!user) return;
+  const handleReminderChange = async (option: string) => {
+    if (!user?.id) return;
+
     try {
-      await api.post('/api/user/settings', { userId: user.id, reminderOption: value });
-      setStatus('Reminder option updated!');
-    } catch (err) {
-      setStatus('Failed to update reminder option.');
-      logger.error('Failed to update reminder option', { userId: user?.id, error: err });
+      setReminderOption(option); // Optimistic update
+      await api.post('/api/user/settings', {
+        userId: user.id,
+        reminderOption: option
+      });
+    } catch (error: any) {
+      logger.error('Failed to update reminder option', { userId: user.id, error });
+      setError('Failed to update reminder option. Please try again.');
     }
   };
 
-  const handleEmailChange = async (value: string) => {
-    setEmail(value);
-    if (!user) return;
-    if (value && !/\S+@\S+\.\S+/.test(value)) {
-      setStatus('Invalid email format.');
-      return;
-    }
-    if (value && value.length > 100) {
-      setStatus('Email is too long.');
-      return;
-    }
-    if (value && !/^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$/.test(value)) {
-      setStatus('Invalid email format.');
-      return;
-    }
+  const handleEmailChange = async (newEmail: string) => {
+    if (!user?.id) return;
+
     try {
-      await api.post('/api/user/settings', { userId: user.id, email: value });
-      setStatus('Email updated!');
-    } catch (err) {
-      setStatus('Failed to update email.');
-      logger.error('Failed to update email', { userId: user.id, error: err });
+      setEmail(newEmail); // Optimistic update
+      await api.post('/api/user/settings', {
+        userId: user.id,
+        email: newEmail
+      });
+    } catch (error: any) {
+      logger.error('Failed to update email', { userId: user.id, error });
+      setError('Failed to update email. Please try again.');
     }
   };
 
-  const handleTelegramChange = async (value: string) => {
-    setTelegram(value);
-    if (!user) return;
-    if (value && !value.startsWith('@')) {
-      setStatus('Telegram handle must start with "@"');
-      return;
-    }
+  const handleTelegramChange = async (newTelegram: string) => {
+    if (!user?.id) return;
+
     try {
-      await api.post('/api/user/settings', { userId: user.id, telegram: value });
-      setStatus('Telegram handle updated!');
-    } catch (err) {
-      setStatus('Failed to update telegram handle.');
-      logger.error('Failed to update telegram handle', { userId: user.id, error: err });
+      setTelegram(newTelegram); // Optimistic update
+      await api.post('/api/user/settings', {
+        userId: user.id,
+        telegram: newTelegram
+      });
+    } catch (error: any) {
+      logger.error('Failed to update telegram', { userId: user.id, error });
+      setError('Failed to update telegram. Please try again.');
     }
   };
 
@@ -118,6 +136,8 @@ export function useSettingsForm() {
     reminderOption,
     email,
     telegram,
+    loading,
+    error,
     handlePurgeToggle,
     handleAutoRenewToggle,
     handleReminderChange,

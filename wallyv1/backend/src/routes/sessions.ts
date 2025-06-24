@@ -1,28 +1,23 @@
-import express from 'express';
-import { sessionService } from '../services/sessionService';
+import { Router } from 'express';
+import {
+  createSession,
+  getSession,
+  extendSession,
+  validateSessionById
+} from '../controllers/sessionController.js';
 
-const router = express.Router();
+const router = Router();
+
+// Create a new session
+router.post('/', createSession);
+
+// Get session details
+router.get('/:sessionId', getSession);
 
 // Validate session
-router.get('/:sessionId/validate', async (req, res) => {
-  try {
-    const { sessionId } = req.params;
-    const isValid = await sessionService.validateSession(sessionId);
-    res.json({ isValid });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Failed to validate session' });
-  }
-});
+router.get('/:sessionId/validate', validateSessionById);
 
-// Revoke session
-router.delete('/:sessionId', async (req, res) => {
-  try {
-    const { sessionId } = req.params;
-    await sessionService.revokeSession(sessionId);
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Failed to revoke session' });
-  }
-});
+// Extend session expiration
+router.post('/:sessionId/extend', extendSession);
 
 export default router;

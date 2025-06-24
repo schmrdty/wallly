@@ -1,16 +1,16 @@
-import React, { useEffect, useState } from "react";
-import { ethers } from "ethers";
-import { formatCurrency, formatDate, formatTransactionId } from '../utils/formatters';
-import useWallet from '../hooks/useWallet';
+import React, { useEffect, useState } from 'react';
+import { ethers } from 'ethers';
+import { formatCurrency, formatDate, formatTransactionId } from '../utils/formatters.ts';
+import useWallet from '../hooks/useWallet.ts';
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string;
 const CONTRACT_ABI = [
   // Only the relevant events for brevity
-  "event TransferPerformed(address indexed user, address indexed token, uint256 amount, address indexed destination, uint256 userRemaining, uint256 oracleTimestamp, uint256 blockTimestamp)",
-  "event PermissionGranted(address indexed user, address withdrawalAddress, bool allowEntireWallet, uint256 expiresAt, address[] tokenList, uint256[] minBalances, uint256[] limits)",
-  "event PermissionRevoked(address indexed user)",
-  "function getUserPermission(address user) view returns (address withdrawalAddress, bool allowEntireWallet, uint256 expiresAt, bool isActive, address[] tokenList, uint256[] minBalances, uint256[] limits)",
-  "function getMiniAppSession(address user) view returns (address delegate, uint256 expiresAt, address[] allowedTokens, bool allowWholeWallet, bool active)"
+  'event TransferPerformed(address indexed user, address indexed token, uint256 amount, address indexed destination, uint256 userRemaining, uint256 oracleTimestamp, uint256 blockTimestamp)',
+  'event PermissionGranted(address indexed user, address withdrawalAddress, bool allowEntireWallet, uint256 expiresAt, address[] tokenList, uint256[] minBalances, uint256[] limits)',
+  'event PermissionRevoked(address indexed user)',
+  'function getUserPermission(address user) view returns (address withdrawalAddress, bool allowEntireWallet, uint256 expiresAt, bool isActive, address[] tokenList, uint256[] minBalances, uint256[] limits)',
+  'function getMiniAppSession(address user) view returns (address delegate, uint256 expiresAt, address[] allowedTokens, bool allowWholeWallet, bool active)'
   // ...add more events as needed
 ];
 
@@ -34,7 +34,7 @@ interface Session {
 
 type WalletEvent =
   | {
-      type: "TransferPerformed";
+      type: 'TransferPerformed';
       token: string;
       amount: string;
       destination: string;
@@ -44,7 +44,7 @@ type WalletEvent =
       tx: string;
     }
   | {
-      type: "PermissionGranted";
+      type: 'PermissionGranted';
       withdrawalAddress: string;
       allowEntireWallet: boolean;
       expiresAt: number;
@@ -54,7 +54,7 @@ type WalletEvent =
       tx: string;
     }
   | {
-      type: "PermissionRevoked";
+      type: 'PermissionRevoked';
       tx: string;
     };
 
@@ -63,21 +63,21 @@ export const WalletEventList: React.FC<{ events: WalletEvent[] }> = ({ events })
     {events.map((event, idx) => (
       <li key={idx}>
         <strong>{event.type}</strong>
-        {event.type === "TransferPerformed" && (
+        {event.type === 'TransferPerformed' && (
           <>
             : Sent {event.amount} of {event.token} to {event.destination} (Remaining: {event.userRemaining})<br />
             Oracle Time: {formatDate(event.oracleTimestamp * 1000)}<br />
             Block Time: {formatDate(event.blockTimestamp * 1000)}<br />
-            Tx: <a href={`https://basescan.org/tx/${event.tx}`} target="_blank" rel="noopener noreferrer">{event.tx}</a>
+            Tx: <a href={`https://basescan.org/tx/${event.tx}`} target='_blank' rel='noopener noreferrer'>{event.tx}</a>
           </>
         )}
-        {event.type === "PermissionGranted" && (
+        {event.type === 'PermissionGranted' && (
           <>
             : Permission granted to {event.withdrawalAddress} (Expires: {formatDate(event.expiresAt * 1000)})<br />
-            Tokens: {event.tokenList.join(", ")}
+            Tokens: {event.tokenList.join(', ')}
           </>
         )}
-        {event.type === "PermissionRevoked" && (
+        {event.type === 'PermissionRevoked' && (
           <>: Permission revoked</>
         )}
       </li>
@@ -109,7 +109,9 @@ const [error, setError] = useState<string | null>(null);
 useEffect(() => {
   if (!window.ethereum || !walletAddress) return;
 
-    const provider = new ethers.providers.Web3Provider(window.ethereum as any);
+    // Use ethers v6+ BrowserProvider
+    const provider = new ethers.BrowserProvider(window.ethereum as any);
+
     const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
 
     const fetchStatus = async () => {
@@ -145,24 +147,23 @@ useEffect(() => {
   // Listen for new on-chain events
   useEffect(() => {
     if (!window.ethereum || !walletAddress) return;
-    // Fix: Explicitly cast window.ethereum to 'any' or 'ExternalProvider'
-    const provider = new ethers.providers.Web3Provider(window.ethereum as any);
+    const provider = new ethers.BrowserProvider(window.ethereum as any);
     const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
 
     const transferListener = (
-      user: string, token: string, amount: ethers.BigNumber, destination: string, userRemaining: ethers.BigNumber,
-      oracleTimestamp: ethers.BigNumber, blockTimestamp: ethers.BigNumber, event: any
+      user: string, token: string, amount: bigint, destination: string, userRemaining: bigint,
+      oracleTimestamp: bigint, blockTimestamp: bigint, event: any
     ) => {
       if (user.toLowerCase() !== walletAddress.toLowerCase()) return;
       setEvents(prev => [
         {
-          type: "TransferPerformed",
+          type: 'TransferPerformed',
           token,
           amount: amount.toString(),
           destination,
           userRemaining: userRemaining.toString(),
-          oracleTimestamp: oracleTimestamp.toNumber(),
-          blockTimestamp: blockTimestamp.toNumber(),
+          oracleTimestamp: Number(oracleTimestamp),
+          blockTimestamp: Number(blockTimestamp),
           tx: event.transactionHash,
         },
         ...prev,
@@ -170,16 +171,16 @@ useEffect(() => {
     };
 
     const permissionGrantedListener = (
-      user: string, withdrawalAddress: string, allowEntireWallet: boolean, expiresAt: ethers.BigNumber,
+      user: string, withdrawalAddress: string, allowEntireWallet: boolean, expiresAt: bigint,
       tokenList: string[], minBalances: string[], limits: string[], event: any
     ) => {
       if (user.toLowerCase() !== walletAddress.toLowerCase()) return;
       setEvents(prev => [
         {
-          type: "PermissionGranted",
+          type: 'PermissionGranted',
           withdrawalAddress,
           allowEntireWallet,
-          expiresAt: expiresAt.toNumber(),
+          expiresAt: Number(expiresAt),
           tokenList,
           minBalances,
           limits,
@@ -202,7 +203,7 @@ useEffect(() => {
       if (user.toLowerCase() !== walletAddress.toLowerCase()) return;
       setEvents(prev => [
         {
-          type: "PermissionRevoked",
+          type: 'PermissionRevoked',
           tx: event.transactionHash,
         },
         ...prev,
@@ -210,14 +211,14 @@ useEffect(() => {
       contract.getUserPermission(walletAddress).then(() => setPermission(null));
     };
 
-    contract.on("TransferPerformed", transferListener);
-    contract.on("PermissionGranted", permissionGrantedListener);
-    contract.on("PermissionRevoked", permissionRevokedListener);
+    contract.on('TransferPerformed', transferListener);
+    contract.on('PermissionGranted', permissionGrantedListener);
+    contract.on('PermissionRevoked', permissionRevokedListener);
 
     return () => {
-      contract.off("TransferPerformed", transferListener);
-      contract.off("PermissionGranted", permissionGrantedListener);
-      contract.off("PermissionRevoked", permissionRevokedListener);
+      contract.off('TransferPerformed', transferListener);
+      contract.off('PermissionGranted', permissionGrantedListener);
+      contract.off('PermissionRevoked', permissionRevokedListener);
     };
   }, [walletAddress]);
 
@@ -238,10 +239,10 @@ useEffect(() => {
       {permission && (
         <div style={{ marginBottom: 16 }}>
           <strong>Permission Status:</strong><br />
-          Status: {permission.isActive ? "Active" : "Inactive"}<br />
+          Status: {permission.isActive ? 'Active' : 'Inactive'}<br />
           Withdrawal Address: {permission.withdrawalAddress}<br />
           Expires: {formatDate(permission.expiresAt * 1000)}<br />
-          Allowed Tokens: {permission.tokenList.join(", ")}
+          Allowed Tokens: {permission.tokenList.join(', ')}
           {permission.tokenList && permission.minBalances && renderTokenPreview(permission.tokenList, permission.minBalances)}
         </div>
       )}
@@ -250,8 +251,8 @@ useEffect(() => {
           <strong>Mini-App Session:</strong><br />
           Delegate: {session.delegate}<br />
           Expires: {formatDate(session.expiresAt * 1000)}<br />
-          Allowed Tokens: {session.allowedTokens.join(", ")}<br />
-          Allow Whole Wallet: {session.allowWholeWallet ? "Yes" : "No"}
+          Allowed Tokens: {session.allowedTokens.join(', ')}<br />
+          Allow Whole Wallet: {session.allowWholeWallet ? 'Yes' : 'No'}
         </div>
       )}
       <WalletEventList events={events} />

@@ -1,159 +1,377 @@
-import { ethers } from 'ethers';
-import { wallyv1Address } from '../config';
-import WallyV1 from '../artifacts/WallyV1.json';
-import { sessionService } from './sessionService';
-import { TransferPerformedEvent, PermissionGrantedEvent, PermissionRevokedEvent, MiniAppSessionGrantedEvent, MiniAppSessionRevokedEvent } from '../db/models';
-import redisClient from '../db/redisClient';
-import { logInfo, logError } from '../infra/monitoring/logger
+import { createPublicClient, http, Chain } from 'viem';
+import { base } from 'viem/chains';
+import { watchContractEvent } from 'viem/actions';
+import wallyv1Abi from '../abis/wallyv1.json' with { type: 'json' };
+import { contractSessionService } from './contractSessionService.js';
+import { notificationService } from './notificationService.js';
+import redisClient from '../db/redisClient.js';
+import logger from '../infra/mon/logger.js';
 
-const provider = new ethers.providers.JsonRpcProvider(process.env.RPC_URL);
-const contract = new ethers.Contract(wallyv1Address, WallyV1.abi, provider);
+const wallyv1Address = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
+const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL_1 || process.env.RPC_URL || '';
 
-export function startEventListeners() {
-    // TransferPerformed
-    contract.on('TransferPerformed', async (user, token, amount, destination, userRemaining, oracleTimestamp, blockTimestamp, event) => {
-        logInfo(`[Event] TransferPerformed: user=${user}, token=${token}, amount=${amount}, destination=${destination}`);
-        await TransferPerformedEvent.create({
-            user,
-            token,
-            amount: amount.toString(),
-            destination,
-            userRemaining: userRemaining.toString(),
-            oracleTimestamp: oracleTimestamp.toString(),
-            blockTimestamp: blockTimestamp.toString(),
-            transactionHash: event.transactionHash,
-        });
-        // Optionally: push to Redis for real-time feeds
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'TransferPerformed',
-            user, token, amount, destination, userRemaining, oracleTimestamp, blockTimestamp, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-    });
+if (!wallyv1Address) throw new Error('NEXT_PUBLIC_CONTRACT_ADDRESS is not set');
+if (!rpcUrl) throw new Error('RPC_URL is not set');
 
-    // TokenStarted
-    contract.on('TokenStarted', async (user, token, event) => {
-        logInfo(`[Event] TokenStarted: user=${user}, token=${token}`);
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'TokenStarted',
-            user, token, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-    });
-    // TokenStopped
-    contract.on('TokenStopped', async (user, token, event) => {
-        logInfo(`[Event] TokenStopped: user=${user}, token=${token}`);
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'TokenStopped',
-            user, token, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-    });
+const client = createPublicClient({
+  chain: base,
+  transport: http(rpcUrl),
+});
 
-    // PermissionUpdated
-    contract.on('PermissionUpdated', async (user, withdrawalAddress, allowEntireWallet, expiresAt, tokenList, minBalances, limits, action, event) => {
-        logInfo(`[Event] PermissionUpdated: user=${user}, action=${action}`);
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'PermissionUpdated',
-            user, withdrawalAddress, allowEntireWallet, expiresAt, tokenList, minBalances, limits, action, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-    });
-
-    // PermissionGranted
-    contract.on('PermissionGranted', async (user, withdrawalAddress, allowEntireWallet, expiresAt, tokenList, minBalances, limits, event) => {
-        logInfo(`[Event] PermissionGranted: user=${user}, withdrawalAddress=${withdrawalAddress}, allowEntireWallet=${allowEntireWallet}`);
-        await PermissionGrantedEvent.create({
-            user,
-            withdrawalAddress,
-            allowEntireWallet,
-            expiresAt: new Date(Number(expiresAt) * 1000),
-            tokenList,
-            minBalances,
-            limits,
-            transactionHash: event.transactionHash,
-        });
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'PermissionGranted',
-            user, withdrawalAddress, allowEntireWallet, expiresAt, tokenList, minBalances, limits, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-        await redisClient.lPush(`notifications:${user}`, JSON.stringify({
-            title: 'Permission granted',
-            message: 'Your permission has been granted.',
-            timestamp: Date.now()
-        }));
-    });
-
-    // PermissionRevoked
-    contract.on('PermissionRevoked', async (user, event) => {
-        logInfo(`[Event] PermissionRevoked: user=${user}`);
-        await PermissionRevokedEvent.create({
-            user,
-            transactionHash: event.transactionHash,
-        });
-        await sessionService.revokeSession(user, 'rbac');
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'PermissionRevoked',
-            user, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-        await redisClient.lPush(`notifications:${user}`, JSON.stringify({
-            title: 'Permission revoked',
-            message: 'Your permission has been revoked.',
-            timestamp: Date.now()
-        }));
-    });
-
-    // MiniAppSessionGranted
-    contract.on('MiniAppSessionGranted', async (user, delegate, tokens, allowEntireWallet, expiresAt, event) => {
-        logInfo(`[Event] MiniAppSessionGranted: user=${user}, delegate=${delegate}, allowEntireWallet=${allowEntireWallet}, tokens=${tokens}, expiresAt=${expiresAt}`);
-        await MiniAppSessionGrantedEvent.create({
-            user,
-            delegate,
-            tokens,
-            allowEntireWallet,
-            expiresAt: new Date(Number(expiresAt) * 1000),
-            transactionHash: event.transactionHash,
-        });
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'MiniAppSessionGranted',
-            user, delegate, tokens, allowEntireWallet, expiresAt, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-    });
-
-    // MiniAppSessionRevoked
-    contract.on('MiniAppSessionRevoked', async (user, delegate, event) => {
-        logInfo(`[Event] MiniAppSessionRevoked: user=${user}, delegate=${delegate}`);
-        await MiniAppSessionRevokedEvent.create({
-            user,
-            delegate,
-            transactionHash: event.transactionHash,
-        });
-        await sessionService.revokeSession(user, 'rbac');
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'MiniAppSessionRevoked',
-            user, delegate, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-    });
-
-    // PermissionForceRevoked
-    contract.on('PermissionForceRevoked', async (admin, user, event) => {
-        logInfo(`[Event] PermissionForceRevoked: admin=${admin}, user=${user}`);
-        await sessionService.revokeSession(user, 'rbac');
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'PermissionForceRevoked',
-            admin, user, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-    });
-
-    // SessionExpired (custom event, if present)
-    contract.on('SessionExpired', async (user, event) => {
-        logInfo(`[Event] SessionExpired: user=${user}`);
-        await sessionService.revokeSession(user, 'expired');
-        await redisClient.lPush(`userEvents:${user}`, JSON.stringify({
-            event: 'SessionExpired',
-            user, transactionHash: event.transactionHash, createdAt: Date.now()
-        }));
-    });
-
-    contract.on('error', (err) => {
-        logError(`[Contract Event Listener Error]: ${err}`);
-    });
-
-    logInfo('Event listeners started for WallyV1 contract.');
+interface ContractEvent {
+  event: string;
+  user?: string;
+  token?: string;
+  amount?: string;
+  destination?: string;
+  delegate?: string;
+  withdrawalAddress?: string;
+  allowEntireWallet?: boolean;
+  expiresAt?: string;
+  tokenList?: string[];
+  minBalances?: string[];
+  limits?: string[];
+  action?: string;
+  admin?: string;
+  transactionHash: string;
+  createdAt: number;
+  blockNumber?: bigint;
 }
+
+class EventListenerService {
+  private isListening = false;
+  private unwatchFunctions: (() => void)[] = [];
+
+  async startEventListeners() {
+    if (this.isListening) {
+      logger.warn('Event listeners already running');
+      return;
+    }
+
+    try {
+      // TransferPerformed
+      const unwatchTransfer = watchContractEvent(client, {
+        address: wallyv1Address,
+        abi: wallyv1Abi,
+        eventName: 'TransferPerformed',
+        onLogs: async (logs) => {
+          for (const log of logs) {
+            await this.handleTransferPerformed(log);
+          }
+        },
+        onError: (err) => logger.error('[TransferPerformed Listener Error]:', err),
+      });
+
+      // TokenStopped
+      const unwatchTokenStopped = watchContractEvent(client, {
+        address: wallyv1Address,
+        abi: wallyv1Abi,
+        eventName: 'TokenStopped',
+        onLogs: async (logs) => {
+          for (const log of logs) {
+            await this.handleTokenStopped(log);
+          }
+        },
+        onError: (err) => logger.error('[TokenStopped Listener Error]:', err),
+      });
+
+      // PermissionUpdated
+      const unwatchPermissionUpdated = watchContractEvent(client, {
+        address: wallyv1Address,
+        abi: wallyv1Abi,
+        eventName: 'PermissionUpdated',
+        onLogs: async (logs) => {
+          for (const log of logs) {
+            await this.handlePermissionUpdated(log);
+          }
+        },
+        onError: (err) => logger.error('[PermissionUpdated Listener Error]:', err),
+      });
+
+      // PermissionGranted
+      const unwatchPermissionGranted = watchContractEvent(client, {
+        address: wallyv1Address,
+        abi: wallyv1Abi,
+        eventName: 'PermissionGranted',
+        onLogs: async (logs) => {
+          for (const log of logs) {
+            await this.handlePermissionGranted(log);
+          }
+        },
+        onError: (err) => logger.error('[PermissionGranted Listener Error]:', err),
+      });
+
+      // PermissionRevoked
+      const unwatchPermissionRevoked = watchContractEvent(client, {
+        address: wallyv1Address,
+        abi: wallyv1Abi,
+        eventName: 'PermissionRevoked',
+        onLogs: async (logs) => {
+          for (const log of logs) {
+            await this.handlePermissionRevoked(log);
+          }
+        },
+        onError: (err) => logger.error('[PermissionRevoked Listener Error]:', err),
+      });
+
+      // MiniAppSessionGranted
+      const unwatchMiniAppGranted = watchContractEvent(client, {
+        address: wallyv1Address,
+        abi: wallyv1Abi,
+        eventName: 'MiniAppSessionGranted',
+        onLogs: async (logs) => {
+          for (const log of logs) {
+            await this.handleMiniAppSessionGranted(log);
+          }
+        },
+        onError: (err) => logger.error('[MiniAppSessionGranted Listener Error]:', err),
+      });
+
+      // MiniAppSessionRevoked
+      const unwatchMiniAppRevoked = watchContractEvent(client, {
+        address: wallyv1Address,
+        abi: wallyv1Abi,
+        eventName: 'MiniAppSessionRevoked',
+        onLogs: async (logs) => {
+          for (const log of logs) {
+            await this.handleMiniAppSessionRevoked(log);
+          }
+        },
+        onError: (err) => logger.error('[MiniAppSessionRevoked Listener Error]:', err),
+      });
+
+      this.unwatchFunctions = [
+        unwatchTransfer,
+        unwatchTokenStopped,
+        unwatchPermissionUpdated,
+        unwatchPermissionGranted,
+        unwatchPermissionRevoked,
+        unwatchMiniAppGranted,
+        unwatchMiniAppRevoked,
+      ];
+
+      this.isListening = true;
+      logger.info('✅ Event listeners started for WallyV1 contract');
+    } catch (error) {
+      logger.error('Failed to start event listeners:', error);
+      throw error;
+    }
+  }
+
+  stopEventListeners() {
+    this.unwatchFunctions.forEach(unwatch => unwatch());
+    this.unwatchFunctions = [];
+    this.isListening = false;
+    logger.info('Event listeners stopped');
+  }
+
+  private async handleTransferPerformed(log: any) {
+    const { args, transactionHash, blockNumber } = log;
+    if (!args) return;
+
+    const event: ContractEvent = {
+      event: 'TransferPerformed',
+      user: args.user,
+      token: args.token,
+      amount: args.amount?.toString(),
+      destination: args.destination,
+      transactionHash: transactionHash || '',
+      createdAt: Date.now(),
+      blockNumber,
+    };
+
+    logger.info(`[Event] TransferPerformed: user=${args.user}, token=${args.token}, amount=${args.amount}, destination=${args.destination}`);
+
+    await this.storeUserEvent(args.user, event);
+    await notificationService.sendInAppNotification(
+      args.user,
+      'Transfer Completed',
+      `Successfully transferred ${args.amount} tokens to ${args.destination}`
+    );
+  }
+
+  private async handleTokenStopped(log: any) {
+    const { args, transactionHash, blockNumber } = log;
+    if (!args) return;
+
+    const event: ContractEvent = {
+      event: 'TokenStopped',
+      user: args.user,
+      token: args.token,
+      transactionHash: transactionHash || '',
+      createdAt: Date.now(),
+      blockNumber,
+    };
+
+    logger.info(`[Event] TokenStopped: user=${args.user}, token=${args.token}`);
+
+    await this.storeUserEvent(args.user, event);
+    await notificationService.sendInAppNotification(
+      args.user,
+      'Token Monitoring Stopped',
+      `Stopped monitoring ${args.token}`
+    );
+  }
+
+  private async handlePermissionUpdated(log: any) {
+    const { args, transactionHash, blockNumber } = log;
+    if (!args) return;
+
+    const event: ContractEvent = {
+      event: 'PermissionUpdated',
+      user: args.user,
+      withdrawalAddress: args.withdrawalAddress,
+      allowEntireWallet: args.allowEntireWallet,
+      expiresAt: args.expiresAt?.toString(),
+      tokenList: args.tokenList,
+      minBalances: args.minBalances?.map((b: bigint) => b.toString()),
+      limits: args.limits?.map((l: bigint) => l.toString()),
+      action: args.action,
+      transactionHash: transactionHash || '',
+      createdAt: Date.now(),
+      blockNumber,
+    };
+
+    logger.info(`[Event] PermissionUpdated: user=${args.user}, action=${args.action}`);
+
+    await this.storeUserEvent(args.user, event);
+    await notificationService.sendInAppNotification(
+      args.user,
+      'Permissions Updated',
+      `Your wallet permissions have been ${args.action}`
+    );
+  }
+
+  private async handlePermissionGranted(log: any) {
+    const { args, transactionHash, blockNumber } = log;
+    if (!args) return;
+
+    const event: ContractEvent = {
+      event: 'PermissionGranted',
+      user: args.user,
+      withdrawalAddress: args.withdrawalAddress,
+      allowEntireWallet: args.allowEntireWallet,
+      expiresAt: args.expiresAt?.toString(),
+      tokenList: args.tokenList,
+      minBalances: args.minBalances?.map((b: bigint) => b.toString()),
+      limits: args.limits?.map((l: bigint) => l.toString()),
+      transactionHash: transactionHash || '',
+      createdAt: Date.now(),
+      blockNumber,
+    };
+
+    logger.info(`[Event] PermissionGranted: user=${args.user}, withdrawalAddress=${args.withdrawalAddress}`);
+
+    await this.storeUserEvent(args.user, event);
+    await notificationService.sendInAppNotification(
+      args.user,
+      'Permission Granted',
+      'Wally now has permission to monitor and transfer your tokens'
+    );
+  }
+
+  private async handlePermissionRevoked(log: any) {
+    const { args, transactionHash, blockNumber } = log;
+    if (!args) return;
+
+    const event: ContractEvent = {
+      event: 'PermissionRevoked',
+      user: args.user,
+      transactionHash: transactionHash || '',
+      createdAt: Date.now(),
+      blockNumber,
+    };
+
+    logger.info(`[Event] PermissionRevoked: user=${args.user}`);
+
+    await this.storeUserEvent(args.user, event);
+    await notificationService.sendInAppNotification(
+      args.user,
+      'Permission Revoked',
+      'Your Wally permissions have been revoked'
+    );
+  }
+
+  private async handleMiniAppSessionGranted(log: any) {
+    const { args, transactionHash, blockNumber } = log;
+    if (!args) return;
+
+    const event: ContractEvent = {
+      event: 'MiniAppSessionGranted',
+      user: args.user,
+      delegate: args.delegate,
+      allowEntireWallet: args.allowEntireWallet,
+      expiresAt: args.expiresAt?.toString(),
+      transactionHash: transactionHash || '',
+      createdAt: Date.now(),
+      blockNumber,
+    };
+
+    logger.info(`[Event] MiniAppSessionGranted: user=${args.user}, delegate=${args.delegate}`);
+
+    await this.storeUserEvent(args.user, event);
+
+    // Update contract session service
+    try {
+      await contractSessionService.createContractSession({
+        userId: args.user,
+        walletAddress: args.user,
+        delegate: args.delegate,
+        allowedTokens: args.tokens || [],
+        allowWholeWallet: args.allowEntireWallet,
+        expiresAt: args.expiresAt?.toString() || '',
+        txHash: transactionHash || '',
+      });
+    } catch (error) {
+      logger.error('Failed to create contract session:', error);
+    }
+  }
+
+  private async handleMiniAppSessionRevoked(log: any) {
+    const { args, transactionHash, blockNumber } = log;
+    if (!args) return;
+
+    const event: ContractEvent = {
+      event: 'MiniAppSessionRevoked',
+      user: args.user,
+      delegate: args.delegate,
+      transactionHash: transactionHash || '',
+      createdAt: Date.now(),
+      blockNumber,
+    };
+
+    logger.info(`[Event] MiniAppSessionRevoked: user=${args.user}, delegate=${args.delegate}`);
+
+    await this.storeUserEvent(args.user, event);
+    await notificationService.sendInAppNotification(
+      args.user,
+      'Mini App Session Revoked',
+      'Your mini app session has been revoked'
+    );
+  }
+
+  private async storeUserEvent(userAddress: string, event: ContractEvent) {
+    try {
+      await redisClient.lPush(`userEvents:${userAddress}`, JSON.stringify(event));
+      await redisClient.expire(`userEvents:${userAddress}`, 60 * 60 * 24 * 30); // 30 days
+    } catch (error) {
+      logger.error('Failed to store user event:', error);
+    }
+  }
+
+  async getUserEvents(userAddress: string, limit = 50): Promise<ContractEvent[]> {
+    try {
+      const events = await redisClient.lRange(`userEvents:${userAddress}`, 0, limit - 1);
+      return events.map(event => JSON.parse(event));
+    } catch (error) {
+      logger.error('Failed to get user events:', error);
+      return [];
+    }
+  }
+
+  isRunning(): boolean {
+    return this.isListening;
+  }
+}
+
+export const eventListenerService = new EventListenerService();

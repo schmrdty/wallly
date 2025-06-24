@@ -1,45 +1,54 @@
 import { useState } from 'react';
-import { useSession } from '../hooks/useSession';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
+import { useSession } from './useSession.ts';
 
 export function useSessionManager() {
-  const { isValid, loading: sessionLoading, error, onLogin, logout } = useSession();
+  const { isAuthenticated, isLoading: sessionLoading, onLogin, onLogout } = useSession();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const router = useRouter();
 
-  const handleLogout = async () => {
-    setLoading(true);
-    setStatus('');
+  const handleLogin = async (sessionId: string, userData?: any) => {
     try {
-      await logout();
-      setStatus('Logged out.');
-      setTimeout(() => router.push('/'), 1000);
-    } catch {
-      setStatus('Failed to log out.');
+      setLoading(true);
+      setStatus('Logging in...');
+
+      onLogin(sessionId, userData);
+      setStatus('Login successful');
+
+      // Redirect after successful login
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Login failed:', error);
+      setStatus('Login failed');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const handleLogin = async () => {
-    setLoading(true);
-    setStatus('');
+  const handleLogout = async () => {
     try {
-      await onLogin('your-session-id');
-      setStatus('Logged in.');
-    } catch {
-      setStatus('Failed to log in.');
+      setLoading(true);
+      setStatus('Logging out...');
+
+      onLogout();
+      setStatus('Logged out');
+
+      // Redirect after logout
+      router.push('/');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      setStatus('Logout failed');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return {
-    isValid,
-    sessionLoading,
-    error,
+    isAuthenticated,
+    loading: loading || sessionLoading,
     status,
-    handleLogin,
-    handleLogout,
-    loading
+    login: handleLogin,
+    logout: handleLogout,
   };
 }

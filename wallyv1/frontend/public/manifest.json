@@ -1,65 +1,26 @@
 {
-  "short_name": "Wally",
-  "name": "Wally the Wallet Watcher",
-  "icons": [
-    {
-    "src": "/pngs/icon-32.png",
-      "type": "image/png",
-      "sizes": "32x32"
-    },
-    {
-      "src": "/pngs/favicon.png",
-      "type": "image/png",
-      "sides": "48x48"
-    },
-    {
-      "src": "/pngs/smalltile.png",
-      "type": "image/png",
-      "sizes": "70x70"
-    },
-    {
-      "src": "/pngs/mediumtile.png",
-      "type": "image/png",
-      "sizes": "150x150"
-    },
-    {
-      "src": "/pngs/apple-touch-icon.png",
-      "type": "image/png",
-      "sizes": "180x180"
-    },
-    {
-      "src": "/pngs/icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "/pngs/icon-256.png",
-      "type": "image/png",
-      "sizes": "256x256"
-    },
-    {
-      "src": "/pngs/largetile.png",
-      "type": "image/png",
-      "sizes": "310x310"
-    },
-    {
-      "src": "/pngs/icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    },
-    {
-      "src": "/pngs/wally-preview.png",
-      "type": "image/png",
-      "sizes": "1200x630"
-    },
-    {
-      "src": "/pngs/wally-preview.png",
-      "type": "image/png",
-      "sizes": "1200x630"
-    }
-  ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#3498db",
-  "background_color": "#f4f4f4"
+    "name": "Wally the Wallet Watcher",
+    "short_name": "Wally",
+    "description": "Automate non-custodial wallet monitoring and transfers.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#181a20",
+    "theme_color": "#7c3aed",
+    "icons": [
+        {
+            "src": "/icon-32.png",
+            "sizes": "32x32",
+            "type": "image/png"
+        },
+        {
+            "src": "/icon-256.png",
+            "sizes": "256x256",
+            "type": "image/png"
+        },
+        {
+            "src": "/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api } from '../utils/api';
-import type { Permission } from '../types/Permission';
+import { api } from '../utils/api.ts';
+import type { Permission } from '../types/Permission.ts';
 
 interface UsePermissionManagerProps {
   userId: string;

@@ -1,45 +1,63 @@
 {
   "compilerOptions": {
     "target": "es6",
-    "module": "commonjs",
+    "module": "esnext",
     "jsx": "preserve",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "src/*"
-      ]
-    },
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "allowJs": true,
-    "noEmit": true,
-    "incremental": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "plugins": [
       {
         "name": "next"
       }
-    ]
+    ],
+    "allowImportingTsExtensions": true,
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "es6"
+    ],
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
   },
   "include": [
+    "next-env.d.ts",
     "global.d.ts",
-    "src/**/*",
     "**/*.ts",
     "**/*.tsx",
-    "**/*.d.ts",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "../backend/src/controllers/autoSaveController.ts",
+    "../backend/src/controllers/billPaymentController.ts",
+    "../backend/src/controllers/charityDonationController.ts",
+    "../backend/src/controllers/emergencyFundController.ts",
+    "../backend/src/controllers/investmentDCAController.ts",
+    "../backend/src/controllers/multiWalletConsolidationController.ts",
+    "../backend/src/controllers/subscriptionManagementController.ts",
+    "../backend/src/controllers/zeroOutOldWalletController.ts",
+    "../backend/src/services/zeroOutOldWalletService.ts",
+    "../backend/src/services/subscriptionManagementService.ts",
+    "../backend/src/services/multiWalletConsolidationService.ts",
+    "../backend/src/services/investmentDCAService.ts",
+    "../backend/src/services/emergencyFundService.ts",
+    "../backend/src/services/charityDonationService.ts",
+    "../backend/src/services/billPaymentService.ts",
+    "../backend/src/services/autoSaveService.ts"
   ],
   "exclude": [
     "node_modules",
-    "**/*.spec.ts"
+    "../backend",
+    "**/*.spec.ts",
+    "**/*.test.ts"
   ]
 }

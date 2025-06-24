@@ -1,8 +1,8 @@
-import { ethers } from 'ethers';
+import { recoverMessageAddress, Signature, Hex } from 'viem';
 
-export function verifySignature(address: string, message: string, signature: string): boolean {
+export async function verifySignature(address: string, message: string, signature: string): Promise<boolean> {
     try {
-        const recovered = ethers.utils.verifyMessage(message, signature);
+        const recovered = await recoverMessageAddress({ message, signature: signature as Hex | Signature });
         return recovered.toLowerCase() === address.toLowerCase();
     } catch {
         return false;

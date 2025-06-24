@@ -1,8 +1,6 @@
 import axios from 'axios';
-import { Token } from '../db/index'; // PostgreSQL Token model
-import { logError } from '../infra/monitoring/logger
-import { levenshtein } from '../utils/levenshtein';
-import { getTokenFromPostgres } from './postgresService';
+import logger from '../infra/mon/logger.js';
+import { levenshtein } from '../utils/levenshtein.js';
 
 export interface TokenInfo {
     address: string;
@@ -11,6 +9,7 @@ export interface TokenInfo {
     decimals: number;
     url?: string;
     [key: string]: any;
+    // Add more properties as needed
 }
 
 const IPFS_LISTS = [
@@ -47,6 +46,7 @@ async function fetchTokenListFromIPFS(): Promise<TokenInfo[]> {
     for (let i = 0; i < IPFS_LISTS.length; i++) {
         lastIpfsIndex = (lastIpfsIndex + 1) % IPFS_LISTS.length;
         const url = IPFS_LISTS[lastIpfsIndex];
+        if (!url) continue;
         try {
             const { data } = await axios.get(url);
             if (data && data.tokens && data.tokens.length) {
@@ -62,6 +62,7 @@ async function fetchTokenListFromIPFS(): Promise<TokenInfo[]> {
 // Fetch token list from static URLs
 async function fetchTokenListFromStatic(): Promise<TokenInfo[]> {
     for (const url of STATIC_TOKENLIST_URLS) {
+        if (!url) continue;
         try {
             const { data } = await axios.get(url);
             if (data && data.tokens && data.tokens.length) {
@@ -71,15 +72,9 @@ async function fetchTokenListFromStatic(): Promise<TokenInfo[]> {
             // Continue to next static URL
         }
     }
+    logger.warn('No static token list URLs configured or all failed.');
     return [];
 }
-
-// Fetch token list from PostgreSQL
-async function fetchTokenListFromPostgres(): Promise<TokenInfo[]> {
-    const tokens = await getTokenFromPostgres();
-    return tokens || [];
-}
-
 // Main: Load token list with all fallbacks and cache
 export async function loadTokenList(forceReload = false): Promise<TokenInfo[]> {
     const now = Date.now();
@@ -102,15 +97,6 @@ export async function loadTokenList(forceReload = false): Promise<TokenInfo[]> {
         lastFetch = now;
         return cachedTokenList;
     }
-
-    // 3. Fallback: PostgreSQL
-    const pgList = await fetchTokenListFromPostgres();
-    if (pgList.length) {
-        cachedTokenList = pgList;
-        lastFetch = now;
-        return cachedTokenList;
-    }
-
     throw new Error('Failed to load token list from any source.');
 }
 
@@ -126,17 +112,8 @@ export async function roundRobinFindToken(query: string): Promise<TokenInfo | nu
     const staticToken = findTokenInList(staticList, query);
     if (staticToken) return staticToken;
 
-    // 3. Fallback: PostgreSQL
-    const token = await Token.findOne({
-        where: {
-            [Token.sequelize!.Op.or]: [
-                { address: query },
-                { symbol: query },
-                { name: query }
-            ]
-        }
-    });
-    return token ? token.toJSON() : null;
+    // No token found in any source
+    return null;
 }
 
 // Helper: Fuzzy search for token by address
@@ -163,7 +140,7 @@ export function findTokenByName(name: string): TokenInfo | undefined {
 }
 
 // Periodically refresh the token list cache
-setInterval(() => loadTokenList(true).catch(logError), CACHE_TTL_MS);
+// setInterval(() => loadTokenList(true).catch(logger.error), CACHE_TTL_MS);
 
 export async function refreshTokenList(): Promise<TokenInfo[]> {
     return loadTokenList(true);

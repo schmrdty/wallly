@@ -1,91 +1,66 @@
 import { Request, Response } from 'express';
-import { WalletService } from '../services/walletService';
-import { WallyService } from '../services/wallyService';
-import { logError } from '../infra/mon/logger';
-import Joi from 'joi';
+import { walletService } from '../services/walletService.js';
+import logger from '../infra/mon/logger.js';
 
-const walletService = new WalletService();
-const wallyService = new WallyService();
-
-const createWalletSchema = Joi.object({
-    userId: Joi.string().required(),
-    userEmail: Joi.string().email().required(),
-    type: Joi.string().valid('coinbase', 'other').required(),
-});
-
-const updateWalletSchema = Joi.object({
-    userEmail: Joi.string().email(),
-    type: Joi.string().valid('coinbase', 'other'),
-    // Add other fields that can be updated here
-});
-
-export const getWalletInfo = async (req: Request, res: Response) => {
+export const getWalletInfo = async (req: Request, res: Response): Promise<void> => {
     try {
-        const walletId = req.params.id;
-        if (!walletId) return res.status(400).json({ message: 'Missing wallet ID' });
+        const { id } = req.params;
+        const wallet = await walletService.getWalletInfo(id);
 
-        // Fetch wallet info from DB
-        const walletInfo = await walletService.getWalletInfo(walletId);
-        if (!walletInfo) return res.status(404).json({ message: 'Wallet not found' });
-
-        // Fetch on-chain balances using WallyService
-        const onChainBalances = await wallyService.getAllTokenBalances(walletInfo.address);
-
-        res.status(200).json({ ...walletInfo, onChainBalances });
-    } catch (error) {
-        logError(`Error retrieving wallet info: ${error}`);
-        res.status(500).json({ message: 'Error retrieving wallet information' });
-    }
-};
-
-export const createWallet = async (req: Request, res: Response) => {
-    const { error } = createWalletSchema.validate(req.body);
-    if (error) return res.status(400).json({ message: error.details[0].message });
-
-    try {
-        const { userId, userEmail, type } = req.body;
-        let wallet;
-        if (type === 'coinbase') {
-            wallet = await walletService.createCoinbaseSmartWallet(userId, userEmail);
-        } else {
-            wallet = await walletService.createWallet({ userId, userEmail });
+        if (!wallet) {
+            res.status(404).json({ error: 'Wallet not found' });
+            return;
         }
-        res.status(201).json({ wallet });
-    } catch (error: any) {
-        logError(`Error creating wallet: ${error}`);
-        res.status(500).json({ message: error.message || 'Failed to create wallet' });
-    }
-};
 
-export const updateWallet = async (req: Request, res: Response) => {
-    const { error } = updateWalletSchema.validate(req.body);
-    if (error) return res.status(400).json({ message: error.details[0].message });
-    try {
-        const walletId = req.params.id;
-        const walletData = req.body;
-        if (!walletId) return res.status(400).json({ message: 'Missing wallet ID' });
-
-        const updatedWallet = await walletService.updateWallet(walletId, walletData);
-        if (!updatedWallet) return res.status(404).json({ message: 'Wallet not found' });
-
-        res.status(200).json(updatedWallet);
+        res.json(wallet);
     } catch (error) {
-        logError(`Error updating wallet: ${error}`);
-        res.status(500).json({ message: 'Error updating wallet' });
+        logger.error('Error getting wallet info:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const deleteWallet = async (req: Request, res: Response) => {
+export const createWallet = async (req: Request, res: Response): Promise<void> => {
     try {
-        const walletId = req.params.id;
-        if (!walletId) return res.status(400).json({ message: 'Missing wallet ID' });
+        const walletData = req.body;
+        const wallet = await walletService.createWallet(walletData);
+        res.status(201).json(wallet);
+    } catch (error) {
+        logger.error('Error creating wallet:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
 
-        const deleted = await walletService.deleteWallet(walletId);
-        if (!deleted) return res.status(404).json({ message: 'Wallet not found' });
+export const updateWallet = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+        const updates = req.body;
+        const wallet = await walletService.updateWallet(id, updates);
+
+        if (!wallet) {
+            res.status(404).json({ error: 'Wallet not found' });
+            return;
+        }
+
+        res.json(wallet);
+    } catch (error) {
+        logger.error('Error updating wallet:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const deleteWallet = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+        const success = await walletService.deleteWallet(id);
+
+        if (!success) {
+            res.status(404).json({ error: 'Wallet not found' });
+            return;
+        }
 
         res.status(204).send();
     } catch (error) {
-        logError(`Error deleting wallet: ${error}`);
-        res.status(500).json({ message: 'Error deleting wallet' });
+        logger.error('Error deleting wallet:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 };

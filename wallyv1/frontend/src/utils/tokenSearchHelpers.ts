@@ -1,4 +1,4 @@
-import levenshtein from "js-levenshtein";
+import levenshtein from 'js-levenshtein';
 
 export interface Token {
   address: string;

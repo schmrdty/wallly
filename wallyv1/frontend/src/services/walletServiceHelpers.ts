@@ -1,4 +1,4 @@
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.ts';
 
 export function handleWalletServiceError(error: any, context: string): never {
   logger.error(`[WalletService] ${context}`, error);

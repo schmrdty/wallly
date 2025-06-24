@@ -1,31 +1,65 @@
-const RPC_URLS = [
-  process.env.NEXT_PUBLIC_RPC_URL_1,
-  process.env.NEXT_PUBLIC_RPC_URL_2,
-  process.env.NEXT_PUBLIC_RPC_URL_3,
-  process.env.NEXT_PUBLIC_RPC_URL_4,
-  process.env.NEXT_PUBLIC_RPC_URL_5,
-].filter((url): url is string => typeof url === 'string' && url.length > 0);
+import { createPublicClient, http, Chain } from 'viem';
+import { optimism, base } from 'viem/chains';
 
-// Cryptographically secure random integer in [0, max)
-function secureRandomInt(max: number): number {
-  if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.getRandomValues === 'function') {
-    const array = new Uint32Array(1);
-    window.crypto.getRandomValues(array);
-    return array[0] % max;
-  }
-  // Fallback for Node.js or environments without crypto
-  return Math.floor(Math.random() * max);
-}
+const CHAINS: Record<number, Chain> = {
+  10: optimism,
+  8453: base,
+};
 
-let lastRpcIndex = secureRandomInt(RPC_URLS.length);
+// RPC URLs by chain
+const RPC_URLS: Record<number, string[]> = {
+  10: [
+    process.env.NEXT_PUBLIC_OPTIMISM_RPC_URL_1,
+    process.env.NEXT_PUBLIC_OPTIMISM_RPC_URL_2,
+    process.env.NEXT_PUBLIC_OPTIMISM_RPC_URL_3,
+  ].filter(Boolean) as string[],
+  
+  8453: [
+    process.env.NEXT_PUBLIC_BASE_RPC_URL_1,
+    process.env.NEXT_PUBLIC_BASE_RPC_URL_2,
+  ].filter(Boolean) as string[],
+};
+
+const FALLBACKS: Record<number, string[]> = {
+  10: ['https://optimism-mainnet.public.blastapi.io'],
+  8453: ['https://base-mainnet.public.blastapi.io'],
+};
+
+// Track RPC index for round-robin
+const rpcIndexes: Record<number, number> = {};
 
 /**
- * Returns the next RPC URL in a round-robin fashion.
+ * Get next RPC URL in round-robin fashion
  */
-export function getRpcUrl(): string {
-  if (RPC_URLS.length === 0) {
-    throw new Error('No RPC URLs configured');
+export function getNextRpcUrl(chainId: number = 10): string {
+  const urls = RPC_URLS[chainId]?.length > 0 ? RPC_URLS[chainId] : FALLBACKS[chainId];
+  
+  if (!urls || urls.length === 0) {
+    console.error(`No RPC URLs for chain ${chainId}`);
+    throw new Error(`No RPC URLs for chain ${chainId}`);
   }
-  lastRpcIndex = (lastRpcIndex + 1) % RPC_URLS.length;
-  return RPC_URLS[lastRpcIndex];
+
+  if (rpcIndexes[chainId] === undefined) {
+    rpcIndexes[chainId] = 0;
+  }
+  
+  const url = urls[rpcIndexes[chainId]];
+  rpcIndexes[chainId] = (rpcIndexes[chainId] + 1) % urls.length;
+  
+  return url;
+}
+
+/**
+ * Get viem public client with the next RPC URL
+ */
+export function getPublicClient(chainId: number = 10) {
+  const chain = CHAINS[chainId];
+  if (!chain) throw new Error(`Chain ${chainId} not supported`);
+  
+  const rpcUrl = getNextRpcUrl(chainId);
+  
+  return createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  });
 }

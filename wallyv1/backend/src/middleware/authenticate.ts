@@ -1,23 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { logError } from '../infra/mon/logger';
+import logger from '../infra/mon/logger.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const authHeader = req.headers.authorization;
 
-export function authenticate(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    logError('Unauthorized: No token provided');
-    return res.status(401).json({ message: 'Unauthorized: No token provided' });
-  }
+        if (!authHeader) {
+            res.status(401).json({ error: 'No authorization header' });
+            return;
+        }
 
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    (req as any).user = decoded; // Attach user info to request
-    next();
-  } catch (err) {
-    logError('Unauthorized: Invalid token');
-    return res.status(401).json({ message: 'Unauthorized: Invalid token' });
-  }
+        next();
+    } catch (error) {
+        logger.error('Authentication error:', error);
+        res.status(500).json({ error: 'Authentication failed' });
+    }
 }

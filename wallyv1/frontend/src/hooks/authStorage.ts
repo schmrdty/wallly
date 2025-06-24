@@ -1,16 +1,16 @@
-import { AuthUser } from "../types/user";
+import { AuthUser } from '../types/user.ts';
 
 export function loadUserFromStorage(): AuthUser | null {
-  if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem("user");
+  if (typeof window === 'undefined') return null;
+  const stored = localStorage.getItem('user');
   return stored ? JSON.parse(stored) : null;
 }
 
 export function saveUserToStorage(user: AuthUser | null) {
-  if (typeof window === "undefined") return;
+  if (typeof window === 'undefined') return;
   if (user) {
-    localStorage.setItem("user", JSON.stringify(user));
+    localStorage.setItem('user', JSON.stringify(user));
   } else {
-    localStorage.removeItem("user");
+    localStorage.removeItem('user');
   }
 }

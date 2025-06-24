@@ -1,30 +1,38 @@
-import { api } from './api';
+import axios from 'axios';
 import { logger } from './logger';
 
-// Use in-memory storage for sessionId (more secure than localStorage)
-let sessionId: string | null = null;
+// Simple API instance to avoid circular dependency
+const sessionApi = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000',
+  timeout: 10000
+});
 
-/**
- * Set the current session ID in memory.
- * @param id Session ID string
- */
+// Use localStorage for sessionId persistence
+const SESSION_KEY = 'wally_session_id';
+
 export function setSessionId(id: string): void {
-  sessionId = id;
+  try {
+    localStorage.setItem(SESSION_KEY, id);
+  } catch (err) {
+    logger.warn('Failed to store session ID in localStorage:', err);
+  }
 }
 
-/**
- * Get the current session ID from memory.
- * @returns Session ID string or null
- */
 export function getSessionId(): string | null {
-  return sessionId;
+  try {
+    return localStorage.getItem(SESSION_KEY);
+  } catch (err) {
+    logger.warn('Failed to read session ID from localStorage:', err);
+    return null;
+  }
 }
 
-/**
- * Clear the current session ID from memory.
- */
 export function clearSessionId(): void {
-  sessionId = null;
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch (err) {
+    logger.warn('Failed to clear session ID from localStorage:', err);
+  }
 }
 
 interface SessionValidationResponse {
@@ -37,10 +45,12 @@ interface SessionValidationResponse {
  * @returns Promise<boolean> indicating if the session is valid
  */
 export async function validateSession(): Promise<boolean> {
+  const sessionId = getSessionId();
   if (!sessionId) return false;
   try {
-    const res = await api.get<SessionValidationResponse>(`/sessions/${sessionId}/validate`);
-    return res.data.isValid;
+    const res = await sessionApi.post('/api/auth/validate', { sessionId });
+    // If the request succeeds, the session is valid
+    return true;
   } catch (err) {
     logger.warn('Session validation failed', { sessionId, error: err });
     return false;
@@ -52,9 +62,10 @@ export async function validateSession(): Promise<boolean> {
  * Logs errors if revocation fails.
  */
 export async function revokeSession(): Promise<void> {
+  const sessionId = getSessionId();
   if (!sessionId) return;
   try {
-    await api.delete(`/sessions/${sessionId}`);
+    await sessionApi.delete(`/api/sessions/${sessionId}`);
     clearSessionId();
   } catch (err) {
     logger.error('Failed to revoke session', { sessionId, error: err });

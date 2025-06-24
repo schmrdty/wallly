@@ -1,10 +1,14 @@
 import express from 'express';
-import { transferTokens, batchTransferTokens, metaTransferTokens } from '../controllers/transferController';
+import { transferTokens } from '../controllers/transferController.js';
 
 const router = express.Router();
 
-router.post('/transfer', transferTokens);
-router.post('/batch-transfer', batchTransferTokens);
-router.post('/meta-transfer', metaTransferTokens);
+router.post('/transfer', async (req, res, next) => {
+  try {
+    await transferTokens(req, res);
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default router;

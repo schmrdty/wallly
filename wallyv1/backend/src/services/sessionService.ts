@@ -1,102 +1,192 @@
 import { v4 as uuidv4 } from 'uuid';
-import redisClient from '../db/redisClient';
+import redisClient from '../db/redisClient.js';
+import logger from '../infra/mon/logger.js';
 
-export interface SessionData {
-    sessionId: string;
-    userAddress: string;
-    createdAt: number;
-    expiresAt: number;
-    allowEntireWallet: boolean; // From ABI, not "allowWholeWallet"
-    allowedTokens?: string[];
-    revoked?: boolean;
-    dateOfFirstGrant?: number;
-    dateOfRevoke?: number;
-    methodForRevokedInfoSentToUser?: 'telegram' | 'warpcast' | 'email' | null;
-    // ... add basic metadata as needed
+export type RevokeReason = 'user_request' | 'admin_action' | 'expired' | 'security_violation';
+
+export interface SessionUser {
+  id: string;
+  address?: string;
+  authProvider: 'farcaster' | 'ethereum';
+  fid?: number;
+  username?: string;
+  displayName?: string;
+  pfpUrl?: string;
+  custody?: string;
+  verifications?: string[];
 }
 
-// TTL in seconds (e.g., 12 hours)
-const SESSION_TTL = 60 * 24;
+export interface Session {
+  sessionId: string;
+  userAddress: string;
+  user?: SessionUser;
+  createdAt: number;
+  expiresAt: number;
+  isValid: boolean;
+}
 
-export const sessionService = {
-    async createSession(userAddress: string, allowEntireWallet: boolean, allowedTokens?: string[]): Promise<SessionData> {
-        const sessionId = uuidv4();
-        const now = Date.now();
-        const expiresAt = now + SESSION_TTL * 1000;
-        const sessionData: SessionData = {
-            sessionId,
-            userAddress,
-            createdAt: now,
-            expiresAt,
-            allowEntireWallet,
-            allowedTokens,
-            dateOfFirstGrant: now,
-            revoked: false,
-            methodForRevokedInfoSentToUser: null,
-        };
-        await redisClient.set(`session:${sessionId}`, JSON.stringify(sessionData), { EX: SESSION_TTL });
-        // Optionally index by userAddress as well for fast lookup
-        await redisClient.set(`userSession:${userAddress}`, sessionId, { EX: SESSION_TTL });
-        return sessionData;
-    },
+class SessionService {
+  private readonly SESSION_PREFIX = 'session:';
+  private readonly SESSION_TTL = 60 * 60 * 24 * 7; // 7 days
+  /**
+   * Create a new session
+   */
+  async createSession(authProvider: string, userData: SessionUser): Promise<Session> {
+    try {
+      const sessionId = uuidv4();
+      const now = Date.now();
+      const expiresAt = now + (this.SESSION_TTL * 1000);
 
-    async validateSession(sessionIdOrUser: string): Promise<boolean> {
-        let sessionId = sessionIdOrUser;
-        if (sessionIdOrUser.startsWith('0x')) {
-            // User address, get sessionId
-            sessionId = await redisClient.get(`userSession:${sessionIdOrUser}`) || '';
-        }
-        if (!sessionId) return false;
-        const sessionRaw = await redisClient.get(`session:${sessionId}`);
-        if (!sessionRaw) return false;
-        const session: SessionData = JSON.parse(sessionRaw);
-        if (session.revoked) return false;
-        if (Date.now() > session.expiresAt) {
-            await this.revokeSession(sessionId, 'expired');
-            return false;
-        }
-        return true;
-    },
+      const session: Session = {
+        sessionId,
+        userAddress: userData.address || userData.id,
+        user: userData,
+        createdAt: now,
+        expiresAt,
+        isValid: true
+      };
 
-    async isSessionActive(userAddress: string): Promise<boolean> {
-        const sessionId = await redisClient.get(`userSession:${userAddress}`);
-        if (!sessionId) return false;
-        return this.validateSession(sessionId);
-    },
+      // Try to store session in Redis, with graceful fallback
+      try {
+        await redisClient.setEx(
+          `${this.SESSION_PREFIX}${sessionId}`,
+          this.SESSION_TTL,
+          JSON.stringify(session)
+        );
+        logger.info('Session created and stored in Redis', {
+          sessionId,
+          authProvider,
+          userId: userData.id
+        });
+      } catch (redisError) {
+        // Redis failure should not prevent session creation
+        // In production, you might want to use a different persistent store
+        logger.warn('Session created but not cached (Redis unavailable)', {
+          sessionId,
+          authProvider,
+          userId: userData.id,
+          redisError: redisError instanceof Error ? redisError.message : 'Unknown Redis error'
+        });
+      }
 
-    async getSession(sessionIdOrUser: string): Promise<SessionData | null> {
-        let sessionId = sessionIdOrUser;
-        if (sessionIdOrUser.startsWith('0x')) {
-            sessionId = await redisClient.get(`userSession:${sessionIdOrUser}`) || '';
-        }
-        if (!sessionId) return null;
-        const sessionRaw = await redisClient.get(`session:${sessionId}`);
-        return sessionRaw ? JSON.parse(sessionRaw) : null;
-    },
-
-    // method: 'telegram' | 'warpcast' | 'email' | 'rbac' | 'expired'
-    async revokeSession(sessionIdOrUser: string, method: string = 'user'): Promise<void> {
-        let sessionId = sessionIdOrUser;
-        if (sessionIdOrUser.startsWith('0x')) {
-            sessionId = await redisClient.get(`userSession:${sessionIdOrUser}`) || '';
-        }
-        if (!sessionId) return;
-        const sessionRaw = await redisClient.get(`session:${sessionId}`);
-        if (!sessionRaw) return;
-        const session: SessionData = JSON.parse(sessionRaw);
-        // Remove all but metadata
-        const revokedSession: SessionData = {
-            sessionId: session.sessionId,
-            userAddress: session.userAddress,
-            allowEntireWallet: session.allowEntireWallet,
-            createdAt: session.createdAt,
-            dateOfFirstGrant: session.dateOfFirstGrant,
-            dateOfRevoke: Date.now(),
-            revoked: true,
-            methodForRevokedInfoSentToUser: method as any,
-            expiresAt: session.expiresAt,
-        };
-        await redisClient.set(`session:${sessionId}`, JSON.stringify(revokedSession), { EX: SESSION_TTL });
-        await redisClient.del(`userSession:${session.userAddress}`);
+      return session;
+    } catch (error) {
+      logger.error('Failed to create session:', error);
+      throw new Error('Session creation failed');
     }
-};
+  }
+  /**
+   * Get session by ID
+   */
+  async getSession(sessionId: string): Promise<Session | null> {
+    try {
+      const sessionData = await redisClient.get(`${this.SESSION_PREFIX}${sessionId}`);
+
+      if (!sessionData) {
+        return null;
+      }
+
+      const session: Session = JSON.parse(sessionData);
+
+      // Check if session is expired
+      if (session.expiresAt < Date.now()) {
+        await this.revokeSession(sessionId, 'expired');
+        return null;
+      }
+
+      return session;
+    } catch (error) {
+      logger.error('Failed to get session (Redis unavailable):', error);
+      // In production, you might want to check alternative storage
+      return null;
+    }
+  }
+
+  /**
+   * Validate session
+   */
+  async validateSession(sessionId: string): Promise<boolean> {
+    try {
+      const session = await this.getSession(sessionId);
+      return session !== null && session.isValid;
+    } catch (error) {
+      logger.error('Failed to validate session:', error);
+      // Fail securely - if we can't validate, assume invalid
+      return false;
+    }
+  }
+
+  /**
+   * Revoke session
+   */
+  async revokeSession(sessionId: string, reason: RevokeReason): Promise<boolean> {
+    try {
+      const result = await redisClient.del(`${this.SESSION_PREFIX}${sessionId}`);
+
+      logger.info('Session revoked', { sessionId, reason });
+
+      return result > 0;
+    } catch (error) {
+      logger.error('Failed to revoke session:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Extend session TTL
+   */
+  async extendSession(sessionId: string, customTtl?: number): Promise<boolean> {
+    try {
+      const session = await this.getSession(sessionId);
+
+      if (!session) {
+        return false;
+      }
+
+      // Use custom TTL if provided, otherwise use default
+      const ttlToUse = customTtl || this.SESSION_TTL;
+
+      // Extend expiration
+      session.expiresAt = Date.now() + (ttlToUse * 1000);
+
+      await redisClient.setEx(
+        `${this.SESSION_PREFIX}${sessionId}`,
+        ttlToUse,
+        JSON.stringify(session)
+      );
+
+      return true;
+    } catch (error) {
+      logger.error('Failed to extend session:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all sessions for a user
+   */
+  async getUserSessions(userId: string): Promise<Session[]> {
+    try {
+      const keys = await redisClient.keys(`${this.SESSION_PREFIX}*`);
+      const sessions: Session[] = [];
+
+      for (const key of keys) {
+        const sessionData = await redisClient.get(key);
+        if (sessionData) {
+          const session: Session = JSON.parse(sessionData);
+          if (session.user?.id === userId) {
+            sessions.push(session);
+          }
+        }
+      }
+
+      return sessions;
+    } catch (error) {
+      logger.error('Failed to get user sessions:', error);
+      return [];
+    }
+  }
+}
+
+export const sessionService = new SessionService();
+export default sessionService;

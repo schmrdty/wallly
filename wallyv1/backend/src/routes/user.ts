@@ -1,5 +1,5 @@
 import express from 'express';
-import redisClient from '../db/redisClient';
+import redisClient from '../db/redisClient.js';
 const router = express.Router();
 
 // POST user preferences

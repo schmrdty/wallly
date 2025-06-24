@@ -34,3 +34,11 @@ Thumbs.db
 *.local
 *.sublime-workspace
 *.sublime-project
+*fc-appkit.*
+*.swp
+*.swo
+*.md
+.mdc
+*.mdx
+.rules
+*.rules

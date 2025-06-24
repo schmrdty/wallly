@@ -1,87 +1,62 @@
 import { Request, Response } from 'express';
-import { sessionService } from '../services/sessionService';
-import { logError } from '../infra/mon/logger';
+import { sessionService } from '../services/sessionService.js';
+import logger from '../infra/mon/logger.js';
 
-export const createSession = async (req: Request, res: Response) => {
+export const createSession = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { userAddress, allowEntireWallet, allowedTokens } = req.body;
-        const session = await sessionService.createSession(userAddress, allowEntireWallet, allowedTokens);
-
-        // Set sessionId as HTTP-only cookie
-        res.cookie('sessionId', session.id, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 24 * 60 * 60 * 1000, // 1 day
-        });
-
-        res.status(201).json({ session }); // Optionally, do not include sessionId in the JSON
+        const { sessionType, userData } = req.body;
+        const session = await sessionService.createSession(sessionType || 'default', userData);
+        res.status(201).json(session);
     } catch (error) {
-        logError(`Error creating session: ${error}`);
-        res.status(500).json({ message: 'Internal server error' });
+        logger.error('Error creating session:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-export const validateSession = async (req: Request, res: Response) => {
-    try {
-        const { sessionId } = req.params;
-        const isValid = await sessionService.validateSession(sessionId as string);
-        res.status(200).json({ isValid });
-    } catch (error) {
-        logError(`Error validating session: ${error}`);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
-
-export const getSession = async (req: Request, res: Response) => {
+export const getSession = async (req: Request, res: Response): Promise<void> => {
     try {
         const { sessionId } = req.params;
         const session = await sessionService.getSession(sessionId);
-        if (!session) return res.status(404).json({ message: 'Session not found' });
-        res.status(200).json({ session });
+
+        if (!session) {
+            res.status(404).json({ error: 'Session not found' });
+            return;
+        }
+
+        res.json(session);
     } catch (error) {
-        logError(`Error retrieving session: ${error}`);
-        res.status(500).json({ message: 'Internal server error' });
+        logger.error('Error getting session:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 };
-export const getAllSessions = async (req: Request, res: Response) => {
-    try {
-        const sessions = await sessionService.getAllSessions();
-        res.status(200).json({ sessions });
-    } catch (error) {
-        logError(`Error retrieving all sessions: ${error}`);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
-export const updateSession = async (req: Request, res: Response) => {
+
+export const extendSession = async (req: Request, res: Response): Promise<void> => {
     try {
         const { sessionId } = req.params;
-        const { allowEntireWallet, allowedTokens } = req.body;
-        const updatedSession = await sessionService.updateSession(sessionId, allowEntireWallet, allowedTokens);
-        if (!updatedSession) return res.status(404).json({ message: 'Session not found' });
-        res.status(200).json({ updatedSession });
+        const { ttl } = req.body;
+        // Fix: extendSession now accepts optional TTL parameter
+        const success = await sessionService.extendSession(sessionId, ttl || 43200); // default 12 hours
+
+        if (!success) {
+            res.status(404).json({ error: 'Session not found' });
+            return;
+        }
+
+        res.json({ success: true });
     } catch (error) {
-        logError(`Error updating session: ${error}`);
-        res.status(500).json({ message: 'Internal server error' });
+        logger.error('Error extending session:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 };
-export const deleteSession = async (req: Request, res: Response) => {
+
+export const validateSessionById = async (req: Request, res: Response): Promise<void> => {
     try {
         const { sessionId } = req.params;
-        await sessionService.deleteSession(sessionId);
-        res.status(204).send();
+        const isValid = await sessionService.validateSession(sessionId);
+
+        res.json({ isValid });
     } catch (error) {
-        logError(`Error deleting session: ${error}`);
-        res.status(500).json({ message: 'Internal server error' });
-    }
-};
-export const revokeSession = async (req: Request, res: Response) => {
-    try {
-        const { sessionId } = req.params;
-        await sessionService.revokeSession(sessionId, 'user');
-        res.status(204).send();
-    } catch (error) {
-        logError(`Error revoking session: ${error}`);
-        res.status(500).json({ message: 'Internal server error' });
+        logger.error('Error validating session:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 };

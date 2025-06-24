@@ -1,49 +1,68 @@
 'use client';
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider, cookieToInitialState, type Config } from 'wagmi';
-import { createAppKit } from '@reown/appkit/react';
-import { config, networks, projectId, wagmiAdapter } from '@/config';
-import { base } from '@reown/appkit/networks';
+import { config, projectId } from '../config/index';
+import { ClientOnly } from '../components/ClientOnly';
+import { initializeAppKit } from '../lib/appkit';
+import { AutoSaveProvider } from './autoSaveContext';
+import { SubscriptionProvider } from './subscriptionManagementContext';
+import { ZeroOutOldWalletProvider } from './zeroOutOldWalletContext.tsx';
+import { BillPaymentProvider } from './billPaymentContext.tsx';
+import { CharityDonationProvider } from './charityDonationContext.tsx';
+import { EmergencyFundProvider } from './emergencyFundContext.tsx';
+import { InvestmentDCAProvider } from './investmentDCAContext.tsx';
+import { MultiWalletConsolidationProvider } from './multiWalletConsolidationContext.tsx';
 
 const queryClient = new QueryClient();
 
-const metadata = {
-  name: 'Your App Name',
-  description: 'Your App Description',
-  url: typeof window !== 'undefined' ? window.location.origin : 'https://yourdomain.com',
-  icons: ['https://yourdomain.com/icon.png'],
-};
-
-if (projectId) {
-  createAppKit({
-    adapters: [wagmiAdapter],
-    projectId,
-    networks,
-    defaultNetwork: base,
-    metadata,
-    features: { analytics: true },
-  });
-}
-
-export default function ContextProvider({
-  children,
-  cookies,
+export function ContextProvider({
+    children,
+    cookies,
 }: {
-  children: ReactNode;
-  cookies: string | null;
+    children: any;
+    cookies: string | null;
 }) {
-  const initialState = cookieToInitialState(config as Config, cookies);
+    const [appKitReady, setAppKitReady] = useState(false);
+    const initialState = cookieToInitialState(config as Config, cookies);
 
-  // Return WagmiProvider as a function call, wrapped in a fragment for ReactNode compatibility
-  return (
-    <>
-      {WagmiProvider({
-        config: config as Config,
-        initialState,
-        children: <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
-      })}
-    </>
-  );
+    useEffect(() => {
+        // Initialize AppKit only on the client side
+        if (projectId && typeof window !== 'undefined' && !appKitReady) {
+            const appKit = initializeAppKit();
+            if (appKit) {
+                setAppKitReady(true);
+            }
+        }
+    }, [appKitReady]);
+
+    return (
+        <WagmiProvider config={config as Config} initialState={initialState}>
+            <QueryClientProvider client={queryClient}>
+                <AutoSaveProvider>
+                    <SubscriptionProvider>
+                        <ZeroOutOldWalletProvider>
+                            <BillPaymentProvider>
+                                <CharityDonationProvider>
+                                    <EmergencyFundProvider>
+                                        <InvestmentDCAProvider>
+                                            <MultiWalletConsolidationProvider>
+                                                <ClientOnly fallback={<div>Loading...</div>}>
+                                                    {children}
+                                                </ClientOnly>
+                                            </MultiWalletConsolidationProvider>
+                                        </InvestmentDCAProvider>
+                                    </EmergencyFundProvider>
+                                </CharityDonationProvider>
+                            </BillPaymentProvider>
+                        </ZeroOutOldWalletProvider>
+                    </SubscriptionProvider>
+                </AutoSaveProvider>
+            </QueryClientProvider>
+        </WagmiProvider>
+    );
 }
+
+// Export as default as well for backward compatibility
+export default ContextProvider;

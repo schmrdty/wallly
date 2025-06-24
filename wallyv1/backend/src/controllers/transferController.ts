@@ -1,98 +1,189 @@
 import { Request, Response } from 'express';
-import { sessionService } from '../services/sessionService';
-import { fuzzyFindTokenByAddress } from '../services/tokenListService';
-import { WallyService } from '../services/wallyService';
-import { logError } from '../infra/monitoring/logger';
+import { sessionService } from '../services/sessionService.js';
+import { findTokenByAddress, fuzzyFindTokenByAddress } from '../services/tokenListService.js';
+import { wallyService } from '../services/wallyService.js';
+import logger from '../infra/mon/logger.js';
 
-const wallyService = new WallyService();
 export const getTokenBalance = async (req: Request, res: Response) => {
     const { userAddress, tokenAddress } = req.body;
 
     try {
-        // Validate user session
         const isValidSession = await sessionService.validateSession(userAddress);
         if (!isValidSession) {
             return res.status(401).json({ message: 'Invalid session or signature.' });
         }
 
-        // Validate token address using fuzzy match and token list service
-        const token = fuzzyFindTokenByAddress(tokenAddress);
+        const token = findTokenByAddress(tokenAddress);
         if (!token) {
-            return res.status(400).json({ message: 'Invalid token address.', suggestion: null });
+            const suggestion = fuzzyFindTokenByAddress(tokenAddress);
+            return res.status(400).json({
+                message: 'Invalid token address.',
+                suggestion: suggestion ? suggestion.address : null,
+                symbol: suggestion ? suggestion.symbol : undefined
+            });
         }
         if (token.address.toLowerCase() !== tokenAddress.toLowerCase()) {
             return res.status(400).json({ message: 'Invalid token address.', suggestion: token.address, symbol: token.symbol });
         }
 
-        // Fetch balance
         const balance = await wallyService.getTokenBalance(userAddress, tokenAddress);
         res.status(200).json({ balance });
     } catch (error: any) {
-        logError(`Error occurred while fetching balance: ${error}`);
+        logger.error(`Error occurred while fetching balance: ${error}`);
         return res.status(500).json({ message: 'An error occurred while fetching the balance.', error: error.message });
     }
-}
+};
 
 export const transferTokens = async (req: Request, res: Response) => {
-    const { userAddress, tokenAddress, amount, signature } = req.body;
+    const { userAddress, tokenAddress, amount, signature, to } = req.body;
 
     try {
-        // Validate user session
         const isValidSession = await sessionService.validateSession(userAddress);
         if (!isValidSession) {
             return res.status(401).json({ message: 'Invalid session or signature.' });
         }
 
-        // Validate amount
         if (!amount || isNaN(amount) || Number(amount) <= 0) {
             return res.status(400).json({ message: 'Invalid transfer amount.' });
         }
 
-        // Validate token address using fuzzy match and token list service
-        const token = fuzzyFindTokenByAddress(tokenAddress);
+        const token = findTokenByAddress(tokenAddress);
         if (!token) {
-            return res.status(400).json({ 
-                message: 'Invalid token address.', 
-                suggestion: null 
+            const suggestion = fuzzyFindTokenByAddress(tokenAddress);
+            return res.status(400).json({
+                message: 'Invalid token address.',
+                suggestion: suggestion ? suggestion.address : null,
+                symbol: suggestion ? suggestion.symbol : undefined
             });
         }
         if (token.address.toLowerCase() !== tokenAddress.toLowerCase()) {
-            return res.status(400).json({ 
-                message: 'Invalid token address.', 
-                suggestion: token.address, 
-                symbol: token.symbol 
+            return res.status(400).json({
+                message: 'Invalid token address.',
+                suggestion: token.address,
+                symbol: token.symbol
             });
         }
 
-        // Execute token transfer
-        const transferResult = await wallyService.transferTokens(userAddress, tokenAddress, amount);
+        const transferResult = await wallyService.transferTokens(
+            userAddress,
+            tokenAddress,
+            to,
+            amount,
+            signature
+        );
+        if (!transferResult) {
+            return res.status(500).json({ message: 'Transfer failed due to an unknown error.' });
+        }
         if (transferResult.success) {
             return res.status(200).json({ message: 'Transfer successful.', transactionHash: transferResult.transactionHash });
         } else {
             return res.status(500).json({ message: 'Transfer failed.', error: transferResult.error });
         }
     } catch (error: any) {
-        logError(`Error occurred during transfer: ${error}`);
+        logger.error(`Error occurred during transfer: ${error}`);
         return res.status(500).json({ message: 'An error occurred during the transfer.', error: error.message });
     }
 };
 
-export const batchTransferTokens = async (req: Request, res: Response) => {
-    const { userAddress, transfers } = req.body; // transfers: [{tokenAddress, amount, to}]
+// Handler for getting balances of one or more tokens
+export async function getAllTokenBalancesHandler(req: Request, res: Response) {
     try {
-        const result = await wallyService.batchTransferTokens(userAddress, transfers);
-        res.status(200).json(result);
-    } catch (error: any) {
-        res.status(500).json({ message: 'An error occurred during the batch transfer.', error: error.message });
+        const { userAddress, tokenAddressesArray } = req.body;
+
+        let tokens: string[] = [];
+        if (typeof tokenAddressesArray === 'string') {
+            tokens = tokenAddressesArray.split(',').map(t => t.trim()).filter(Boolean);
+        } else if (Array.isArray(tokenAddressesArray)) {
+            tokens = tokenAddressesArray;
+        }
+
+        if (!userAddress || !tokens.length) {
+            return res.status(400).json({ error: 'userAddress and tokenAddressesArray are required.' });
+        }
+
+        if (tokens.length === 1) {
+            const balance = await wallyService.getTokenBalance(userAddress, tokens[0]);
+            return res.json({ token: tokens[0], balance });
+        }
+
+        if (tokens.length > 1) {
+            const balances = await wallyService.getAllTokenBalances(userAddress, tokens);
+            if (!balances || balances.length === 0) {
+                return res.status(404).json({ message: 'No token balances found.' });
+            }
+            return res.json({ balances });
+        }
+
+        return res.status(400).json({ error: 'No token addresses provided' });
+    } catch (err) {
+        console.error('getTokenBalancesHandler error:', err);
+        const errorMessage = (err && typeof err === 'object' && 'message' in err) ? (err as any).message : 'Internal server error';
+        res.status(500).json({ error: errorMessage });
     }
 };
 
-export const metaTransferTokens = async (req: Request, res: Response) => {
-    const { userAddress, metaTxData } = req.body;
+export const getTokenAllowance = async (req: Request, res: Response) => {
+    const { userAddress, tokenAddress, spenderAddress } = req.body;
+
     try {
-        const result = await wallyService.metaTransferTokens(userAddress, metaTxData);
-        res.status(200).json(result);
+        const isValidSession = await sessionService.validateSession(userAddress);
+        if (!isValidSession) {
+            return res.status(401).json({ message: 'Invalid session or signature.' });
+        }
+
+        const token = findTokenByAddress(tokenAddress);
+        if (!token) {
+            const suggestion = fuzzyFindTokenByAddress(tokenAddress);
+            return res.status(400).json({
+                message: 'Invalid token address.',
+                suggestion: suggestion ? suggestion.address : null,
+                symbol: suggestion ? suggestion.symbol : undefined
+            });
+        }
+        if (token.address.toLowerCase() !== tokenAddress.toLowerCase()) {
+            return res.status(400).json({ message: 'Invalid token address.', suggestion: token.address, symbol: token.symbol });
+        }
+
+        const allowance = await wallyService.getTokenAllowance(userAddress, tokenAddress, spenderAddress);
+        res.status(200).json({ allowance });
     } catch (error: any) {
-        res.status(500).json({ message: 'An error occurred during a meta token transfer.', error: error.message });
+        logger.error(`Error occurred while fetching allowance: ${error}`);
+        return res.status(500).json({ message: 'An error occurred while fetching the allowance.', error: error.message });
+    }
+};
+
+export const getAllTokenAllowancesHandler = async (req: Request, res: Response) => {
+    try {
+        const { userAddress, spenderAddress, tokenAddressesArray } = req.body;
+
+        let tokens: string[] = [];
+        if (typeof tokenAddressesArray === 'string') {
+            tokens = tokenAddressesArray.split(',').map(t => t.trim()).filter(Boolean);
+        } else if (Array.isArray(tokenAddressesArray)) {
+            tokens = tokenAddressesArray;
+        }
+
+        if (!userAddress || !spenderAddress || !tokens.length) {
+            return res.status(400).json({ error: 'userAddress, spenderAddress, and tokenAddressesArray are required.' });
+        }
+
+        if (tokens.length === 1) {
+            const allowance = await wallyService.getTokenAllowance(userAddress, tokens[0], spenderAddress);
+            return res.json({ token: tokens[0], allowance });
+        }
+
+        if (tokens.length > 1) {
+            const allowances = await wallyService.getAllTokenAllowances(userAddress, spenderAddress, tokens);
+            if (!allowances || Object.keys(allowances).length === 0) {
+                return res.status(404).json({ message: 'No token allowances found.' });
+            }
+            return res.json({ allowances });
+        }
+
+        return res.status(400).json({ error: 'No token addresses provided' });
+    } catch (err) {
+        console.error('getAllTokenAllowancesHandler error:', err);
+        const errorMessage = (err && typeof err === 'object' && 'message' in err) ? (err as any).message : 'Internal server error';
+        res.status(500).json({ error: errorMessage });
     }
 };

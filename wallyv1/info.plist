@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Identity -->
+    <key>CFBundleIdentifier</key>
+    <string>xyz.schmidtiest.wally</string>
+    
+    <key>CFBundleName</key>
+    <string>Wally</string>
+    
+    <key>CFBundleDisplayName</key>
+    <string>Wally Wallet Watcher</string>
+    
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    
+    <!-- App Type -->
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    
+    <key>CFBundleExecutable</key>
+    <string>Wally</string>
+    
+    <!-- iOS Requirements -->
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    
+    <key>CFBundleIcons</key>
+    <dict>
+        <key>CFBundlePrimaryIcon</key>
+        <dict>
+            <key>CFBundleIconFiles</key>
+            <array>
+                <string>AppIcon20x20</string>
+                <string>AppIcon29x29</string>
+                <string>AppIcon40x40</string>
+                <string>AppIcon60x60</string>
+            </array>
+            <key>CFBundleIconName</key>
+            <string>AppIcon</string>
+        </dict>
+    </dict>
+    
+    <!-- Device Support -->
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer> <!-- iPhone -->
+        <integer>2</integer> <!-- iPad -->
+    </array>
+    
+    <!-- iOS Version Support -->
+    <key>MinimumOSVersion</key>
+    <string>14.0</string>
+    
+    <!-- Interface Orientations -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    
+    <!-- Status Bar -->
+    <key>UIStatusBarStyle</key>
+    <string>UIStatusBarStyleDefault</string>
+    
+    <key>UIViewControllerBasedStatusBarAppearance</key>
+    <false/>
+    
+    <!-- Launch Screen -->
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
+    
+    <!-- App Transport Security -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>schmidtiest.xyz</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <false/>
+                <key>NSExceptionRequiresForwardSecrecy</key>
+                <false/>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+            </dict>
+        </dict>
+    </dict>
+    
+    <!-- Permissions -->
+    <key>NSCameraUsageDescription</key>
+    <string>Wally needs camera access to scan QR codes for wallet connections.</string>
+    
+    <key>NSContactsUsageDescription</key>
+    <string>Wally needs contacts access to help you send tokens to friends.</string>
+    
+    <key>NSFaceIDUsageDescription</key>
+    <string>Wally uses Face ID to secure your wallet interactions.</string>
+    
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Wally may use location to customize your experience.</string>
+    
+    <!-- URL Schemes -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>xyz.schmidtiest.wally</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>wally</string>
+                <string>wallyapp</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Farcaster Deep Link</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>farcaster</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>WalletConnect</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>wc</string>
+            </array>
+        </dict>
+    </array>
+    
+    <!-- Background Modes -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>background-fetch</string>
+        <string>background-processing</string>
+    </array>
+    
+    <!-- App Category -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.finance</string>
+    
+    <!-- Privacy -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+    
+    <!-- Scene Configuration (iOS 13+) -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>SceneDelegate</string>
+                    <key>UISceneStoryboardFile</key>
+                    <string>Main</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+    
+    <!-- Capabilities -->
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:wally.schmidtiest.xyz</string>
+        <string>applinks:app.schmidtiest.xyz</string>
+    </array>
+    
+    <!-- Developer Info -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+    </array>
+    
+    <!-- App Store -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>wally</string>
+            </array>
+            <key>CFBundleTypeName</key>
+            <string>Wally Configuration</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+        </dict>
+    </array>
+</dict>
+</plist>

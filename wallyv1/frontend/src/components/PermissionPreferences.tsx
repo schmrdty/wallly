@@ -28,7 +28,7 @@ export const PermissionPreferences: React.FC<PermissionPreferencesProps> = ({
     <label>
       Enable Auto-renew:
       <input
-        type="checkbox"
+        type='checkbox'
         checked={autorenew}
         onChange={e => setAutorenew(e.target.checked)}
       />
@@ -41,7 +41,7 @@ export const PermissionPreferences: React.FC<PermissionPreferencesProps> = ({
         ))}
       </select>
     </label>
-    <button type="button" onClick={onSave} disabled={loading}>
+    <button type='button' onClick={onSave} disabled={loading}>
       Save Preferences
     </button>
   </div>

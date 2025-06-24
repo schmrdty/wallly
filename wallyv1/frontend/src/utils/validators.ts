@@ -1,4 +1,4 @@
-import { isAddress } from 'ethers/lib/utils';
+import { ethers } from 'ethers';
 
 /**
  * Validates an Ethereum token address.
@@ -6,7 +6,7 @@ import { isAddress } from 'ethers/lib/utils';
  * @returns True if valid, false otherwise.
  */
 export const validateTokenAddress = (address: string): boolean => {
-    return typeof address === 'string' && isAddress(address);
+    return typeof address === 'string' && ethers.isAddress(address);
 };
 
 /**

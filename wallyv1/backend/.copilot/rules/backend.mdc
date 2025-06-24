@@ -1,0 +1,844 @@
+EVM Smart Contact Interaction Rules:
+# How to Interact with EVM Smart Contracts using AppKit and React
+
+In this recipe, you will learn how to:
+
+* Read data from a smart contract
+* Write data to a smart contract
+
+This guide takes approximately 20 minutes to complete.
+
+Let’s dive in!
+
+## Prerequisites
+
+* A fundamental understanding of JavaScript and React.
+* A minimal installation of AppKit in React.
+* Obtain a new project Id on Reown Cloud at [https://cloud.reown.com](https://cloud.reown.com)
+
+## Final project
+
+<Card title="Appkit Wagmi Example with smart contract interactions" icon="github" href="https://github.com/reown-com/appkit-web-examples/tree/main/react/react-wagmi">
+  Download the full project to try it directly on your computer.
+</Card>
+
+<Card title="Appkit Ethers Example with smart contract interactions" icon="github" href="https://github.com/reown-com/appkit-web-examples/tree/main/react/react-ethers">
+  Download the full project to try it directly on your computer.
+</Card>
+
+## Try the demo in Sepolia Testnet
+
+* [Ethers Example](https://appkit-web-examples-react-ethers.reown.com/)
+* [Wagmi Example](https://appkit-web-examples-react-wagmi.reown.com/)
+
+## Requirements
+
+In order to interact with a smart contract you will need to have one deployed in a EVM-compatible blockchain. There are several tools to help you deploy a smart contract:
+
+* [Remix IDE](https://remix.ethereum.org/)
+* [Foundry](https://getfoundry.sh/)
+* [Truffle](https://www.trufflesuite.com/)
+* [Hardhat](https://hardhat.org/)
+
+We have already deployed a simple smart contract (0xEe6D291CC60d7CeD6627fA4cd8506912245c8cA4) in Sepolia Testnet for you to use. Once you compile the smart contract, you get the ABI.
+The ABI is a set of rules that define how the contract's functions can be called and how data is sent and received.
+
+To interact with the smart contract, you need to have some tokens to pay for gas fees when writing to the contract. You can get them from this [faucet](https://cloud.google.com/application/web3/faucet/ethereum/sepolia), but you can also look for other options on the web.
+It's also good to know that reading from a smart contract is free.
+
+For both SDKs, you need to declare the contract address and ABI.
+
+```jsx
+const storageSC = "0xEe6D291CC60d7CeD6627fA4cd8506912245c8cA4";
+
+const storageABI = [
+  {
+    inputs: [],
+    name: "retrieve",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "num",
+        type: "uint256",
+      },
+    ],
+    name: "store",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+];
+```
+
+### Start building with Wagmi
+
+1. Start by importing the hooks to read and write.
+
+```jsx
+import { useReadContract, useWriteContract } from "wagmi";
+```
+
+2. Call the hooks.
+
+```jsx
+const { writeContract, isSuccess } = useWriteContract();
+const readContract = useReadContract({
+  address: storageSC,
+  abi: storageABI,
+  functionName: "retrieve",
+  query: {
+    enabled: false, // disable the query in onload
+  },
+});
+```
+
+3. Generate the actions:
+
+```jsx
+// Call the function to read the smart contract and print on console
+const handleReadSmartContract = async () => {
+  const { data } = await readContract.refetch();
+  console.log("data: ", data);
+};
+
+// Write to the smart contract and check if the transaction is successful with useEffect
+const handleWriteSmartContract = () => {
+  writeContract({
+    address: storageSC,
+    abi: storageABI,
+    functionName: "store",
+    args: [123n],
+  });
+};
+
+// useEffect to print the success message when the contract is written
+useEffect(() => {
+  if (isSuccess) {
+    console.log("contract write success");
+  }
+}, [isSuccess]);
+```
+
+### Start building with Ethers
+
+1. Start by importing the libraries needed to interact:
+
+```jsx
+import { useAppKitProvider } from "@reown/appkit/react";
+import { Contract, BrowserProvider } from "ethers";
+import type { Provider } from "@reown/appkit/react";
+```
+
+2. Call the AppKit Provider hook:
+
+```jsx
+const { walletProvider } = useAppKitProvider<Provider>("eip155");
+```
+
+3. Generate the actions calling the functions:
+
+```jsx
+// get the data from the smart contract and print on console
+const handleReadSmartContract = async () => {
+  const ethersProvider = new BrowserProvider(walletProvider);
+  const signer = await ethersProvider.getSigner();
+  const contract = new Contract(storageSC, storageABI, signer);
+  const data = await contract.retrieve();
+  console.log("data: ", data);
+};
+
+// write to the smart contract and print on console
+const handleWriteSmartContract = async () => {
+  const ethersProvider = new BrowserProvider(walletProvider);
+  const signer = await ethersProvider.getSigner();
+  const contract = new Contract(storageSC, storageABI, signer);
+  const data = await contract.store(1n);
+  console.log("data: ", data);
+};
+```
+
+## Conclusion
+
+By following this guide, you've learned how to integrate Reown AppKit with Wagmi or Ethers to interact with a smart contract.
+With very few lines of code you can read and write to a smart contract.
+
+Keep exploring AppKit to enhance your dApp's functionality and user experience!
+
+
+wagmi read/write example:
+import { createAppKit } from '@reown/appkit/react'
+
+import { WagmiProvider } from 'wagmi'
+import { useState } from 'react'
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ActionButtonList } from './components/ActionButtonList'
+import { SmartContractActionButtonList } from './components/SmartContractActionButtonList'
+import { InfoList } from './components/InfoList'
+import { projectId, metadata, networks, wagmiAdapter } from './config'
+
+import "./App.css"
+
+const queryClient = new QueryClient()
+
+const generalConfig = {
+  projectId,
+  networks,
+  metadata,
+  themeMode: 'light' as const,
+  themeVariables: {
+    '--w3m-accent': '#000000',
+  }
+}
+
+// Create modal
+createAppKit({
+  adapters: [wagmiAdapter],
+  ...generalConfig,
+  features: {
+    analytics: true // Optional - defaults to your Cloud configuration
+  }
+})
+
+export function App() {
+  const [transactionHash, setTransactionHash] = useState<`0x${string}` | undefined>(undefined);
+  const [signedMsg, setSignedMsg] = useState('');
+  const [balance, setBalance] = useState('');
+
+  const receiveHash = (hash: `0x${string}`) => {
+    setTransactionHash(hash); // Update the state with the transaction hash
+  };
+
+  const receiveSignedMsg = (signedMsg: string) => {
+    setSignedMsg(signedMsg); // Update the state with the transaction hash
+  };
+
+  const receivebalance = (balance: string) => {
+    setBalance(balance)
+  }
+
+
+  return (
+    <div className={"pages"}>
+      <img src="/reown.svg" alt="Reown" style={{ width: '150px', height: '150px' }} />
+      <h1>AppKit Wagmi React dApp Example</h1>
+      <WagmiProvider config={wagmiAdapter.wagmiConfig}>
+        <QueryClientProvider client={queryClient}>
+            <appkit-button />
+            <ActionButtonList sendHash={receiveHash} sendSignMsg={receiveSignedMsg} sendBalance={receivebalance}/>
+            <SmartContractActionButtonList />
+            <div className="advice">
+              <p>
+                This projectId only works on localhost. <br/>
+                Go to <a href="https://cloud.reown.com" target="_blank" className="link-button" rel="Reown Cloud">Reown Cloud</a> to get your own.
+              </p>
+            </div>
+            <InfoList hash={transactionHash} signedMsg={signedMsg} balance={balance}/>
+        </QueryClientProvider>
+      </WagmiProvider>
+    </div>
+  )
+}
+
+export default App
+
+Smart Session example reOwn/viem
+import cors from 'cors';
+import express from 'express';
+import { isAddress, encodeFunctionData, toHex, parseEther } from "viem";
+//import { SmartSessionGrantPermissionsResponse } from "@reown/appkit-experimental/smart-session";
+import { privateKeyToAccount , signMessage } from "viem/accounts";
+import { prepareCalls, handleFetchReceipt, sendPreparedCalls } from "./util/prepareCalls.js";
+import { storageABI } from "./config/index.ts";
+
+// get env variables
+import dotenv from 'dotenv';
+dotenv.config();
+
+const app = express();
+
+// configure cors and sessions
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5174'], // frontend URLs
+  credentials: true,
+}))
+app.use(express.json())
+
+
+// get the signer public key
+app.get('/api/signer', (_, res) => {
+  try {
+    const APPLICATION_PRIVATE_KEY = process.env.APPLICATION_PRIVATE_KEY;
+    if (!APPLICATION_PRIVATE_KEY) {
+      return res.status(400).json({ message: "Missing required environment variables" });
+    }
+
+    const serverPrivateAccount = privateKeyToAccount(APPLICATION_PRIVATE_KEY);
+    res.json({ publicKey: serverPrivateAccount.publicKey });
+  } catch (err) {
+    console.error("Error in /api/signer endpoint:", err);
+    return res.status(500).json({ 
+      message: "Error getting application signer",
+      error: err.message 
+    });
+  }
+});
+
+
+app.post('/api/executeFunction', async (req, res) => {
+  try {
+    console.log("create-smart-session server");
+    const APPLICATION_PRIVATE_KEY = process.env.APPLICATION_PRIVATE_KEY;
+    if (!APPLICATION_PRIVATE_KEY) {
+      return res.status(400).json({ message: "Missing required environment variables" });
+    }
+
+    const { permissions, data } = req.body;
+
+    if (!permissions) {
+      return res.status(400).json({ message: "No permissions provided" });
+    }
+
+    const userAddress = permissions.address;
+    const context = permissions.context;
+
+    if (!userAddress || !isAddress(userAddress)) {
+      throw new Error("Invalid User address");
+    }
+    
+    // make the prepare calls
+    const response = await makePrepareCalls(userAddress, data.chainId, data.contractAddress, storageABI, data.functionName, context);
+    
+    console.log("response: ", response);
+    // sign the hash
+    const signature = await signatureCall(APPLICATION_PRIVATE_KEY, response.signatureRequest.hash);
+
+    // send the prepared calls
+    const sendPreparedCallsResponse = await sendPreparedCalls({
+      context: response.context,
+      preparedCalls: response.preparedCalls,
+      signature: signature,
+    });
+
+    const userOpIdentifier = sendPreparedCallsResponse[0];
+
+    // get the receipt
+    const receipt = await handleFetchReceipt(userOpIdentifier);
+    const txHash = receipt.receipts?.[0]?.transactionHash;
+
+    const finalJSON = {
+      message: `OK`,
+      status: receipt.receipts?.[0]?.status === '0x1' ? 'success' : 'error',
+      userOpIdentifier,
+      txLink: txHash
+    };
+    return res.status(200).json({ finalJSON });
+
+  } catch (e) {
+    console.error("Error:", e);
+    return res.status(500).json({ 
+      message: "An error occurred", 
+      error: e.message 
+    });
+  }
+  
+  });
+
+const signatureCall = async (privateKey, messageHash) => {
+  return await signMessage({
+    privateKey: privateKey,
+    message: { raw: messageHash },
+  });
+}
+
+
+const makePrepareCalls = async (userAddress, chainId, contractAddress, abi, functionName, context) => {
+  const prepareCallsArgs = {
+    from: userAddress,
+    chainId: toHex(chainId),
+    calls: [
+      {
+        to: contractAddress,
+        data: encodeFunctionData({
+          abi: abi,
+          functionName: functionName,
+          args: [Math.floor(Math.random() * 1000) + 1]
+        }),
+        value: parseEther("0") // in case of a transfer parseEther("0.0001"),
+      }
+    ],
+    capabilities: {
+      permissions: { context: context }
+    }
+  }
+  const prepareCallsResponse = await prepareCalls(prepareCallsArgs);
+
+  if (prepareCallsResponse.length !== 1 && prepareCallsResponse[0]) {
+    throw new Error("Invalid response type");
+  }
+  const response = prepareCallsResponse[0];
+  if (!response || response.preparedCalls.type !== "user-operation-v07") {
+    throw new Error("Invalid response type");
+  }
+
+  return response;
+}
+
+
+// start the server
+const listener = app.listen(8080, () =>
+	console.log('Listening on port ' + listener.address().port),
+);
+
+Prepare Calls example:
+class UserOpBuilderApiError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+    this.name = 'UserOpBuilderApiError';
+  }
+}
+
+export async function prepareCalls(args) {
+    const projectId = process.env["SERVER_PROJECT_ID"];
+    if (!projectId) {
+      throw new Error("SERVER_PROJECT_ID is not set");
+    }
+
+    // i have to find the correct URL
+    const url = `https://rpc.walletconnect.org/v1/wallet?projectId=${projectId}`;
+  
+    return jsonRpcRequest("wallet_prepareCalls", [args], url);
+  }
+
+  export async function sendPreparedCalls(args) {
+    const projectId = process.env["SERVER_PROJECT_ID"];
+    if (!projectId) {
+      throw new Error("SERVER_PROJECT_ID is not set");
+    }
+    const url = `https://rpc.walletconnect.org/v1/wallet?projectId=${projectId}`;
+  
+    return jsonRpcRequest("wallet_sendPreparedCalls", [args], url);
+  }
+  
+  async function jsonRpcRequest(method, params, url) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        {
+          jsonrpc: "2.0",
+          id: "1",
+          method,
+          params,
+        },
+        bigIntReplacer,
+      ),
+    });
+
+    if (!response.ok) {
+      throw new UserOpBuilderApiError(response.status, await response.text());
+    }
+
+    const data = await response.json();
+
+    if ("error" in data) {
+      throw new UserOpBuilderApiError(500, JSON.stringify(data.error));
+    }
+
+    return data.result; // Return the result if successful
+  }
+
+  export async function handleFetchReceipt(userOpHash, options = {}) {
+    const { timeout = 30000, interval = 3000 } = options;
+    const endTime = Date.now() + timeout;
+  
+    while (Date.now() < endTime) {
+      const response = await getCallsStatus(userOpHash);
+      if (response.status === "CONFIRMED") {
+        return response;
+      }
+  
+      await new Promise((resolve) => setTimeout(resolve, interval));
+    }
+  
+    throw new AppError(
+      ErrorCodes.TIMEOUT_ERROR,
+      'Timeout: Transaction is still processing'
+    );
+  }
+
+  export async function getCallsStatus(args, options = {}) {
+    const projectId = process.env["SERVER_PROJECT_ID"];
+    if (!projectId) {
+      throw new Error("SERVER_PROJECT_ID is not set");
+    }
+    const url = `https://rpc.walletconnect.org/v1/wallet?projectId=${projectId}`;
+  
+    const { timeout = 60000, interval = 2000 } = options; // Increased timeout to 60 seconds, reduced interval to 2 seconds
+    const endTime = Date.now() + timeout;
+    while (Date.now() < endTime) {
+      try {
+        console.log("args: ", args);
+        const response = await jsonRpcRequest("wallet_getCallsStatus", [args], url);
+        console.log("response: ", response);
+        
+        // Handle different status cases
+        if (response.status === "CONFIRMED") {
+          return response;
+        } else if (response.status === "FAILED") {
+          throw new Error(`Transaction failed: ${response.error || 'Unknown error'}`);
+        } else if (response.status === "PENDING") {
+          // Continue polling
+        } else {
+          console.warn(`Unexpected status: ${response.status}`);
+        }
+      } catch (error) {
+        console.error("Error polling transaction status:", error);
+        // Continue polling on non-fatal errors
+        if (error.message.includes("SERVER_PROJECT_ID") || error.message.includes("Invalid response")) {
+          throw error; // Re-throw critical errors
+        }
+      }
+  
+      // Wait for the specified interval before polling again
+      await new Promise((resolve) => setTimeout(resolve, interval));
+    }
+    throw new Error(
+      `Timeout: Transaction not confirmed after ${timeout/1000} seconds. Last status: ${response?.status || 'unknown'}`
+    );
+  }
+
+  export function bigIntReplacer(_key, value) {
+    if (typeof value === "bigint") {
+      return `0x${value.toString(16)}`;
+    }
+  
+    return value;
+  }
+
+
+
+  *********************************************MOST IMPORTANT AS OF 05/30/2025*************************************************************************
+  # @farcaster/quick-auth
+
+A client for interacting with a Farcaster Quick Auth server.
+
+## Installation
+
+```sh
+npm install @auth-server/client
+# or
+yarn add @auth-server/client
+# or
+pnpm add @auth-server/client
+```
+
+## Usage
+
+```typescript
+import { createClient } from '@farcaster/quick-auth';
+
+// Get a nonce
+const domain = 'your-domain.com';
+const client = createClient();
+const nonce = await client.getNonce();
+
+// Generate a SIWF message using nonce and domain (not shown)
+
+// Verify a SIWF message and get a JWT token
+const token = await client.verifySiwf({
+  message,
+  signature,
+  domain
+});
+
+// Use the return JWT as an Bearer token and validate on your server
+const token = await client.verifyToken({
+  token,
+  domain
+});
+```
+---
+title: Context
+description: View context for an app session
+---
+
+# Context
+
+When your app is opened it can access information about the session from
+`sdk.context`. This object provides basic information about the user, the
+client, and where your app was opened from:
+
+
+```ts
+export type FrameContext = {
+  user: {
+    fid: number;
+    username?: string;
+    displayName?: string;
+    pfpUrl?: string;
+  };
+  location?: FrameLocationContext;
+  client: {
+    clientFid: number;
+    added: boolean;
+    safeAreaInsets?: SafeAreaInsets;
+    notificationDetails?: FrameNotificationDetails;
+  };
+};
+```
+
+## Properties
+
+### `location`
+
+Contains information about the context from which the Mini App was launched.
+
+```ts
+export type CastEmbedLocationContext = {
+  type: 'cast_embed';
+  embed: string;
+  cast: {
+    fid: number;
+    hash: string;
+  };
+};
+
+export type NotificationLocationContext = {
+  type: 'notification';
+  notification: {
+    notificationId: string;
+    title: string;
+    body: string;
+  };
+};
+
+export type LauncherLocationContext = {
+  type: 'launcher';
+};
+
+export type ChannelLocationContext = {
+  type: 'channel';
+  channel: {
+    /**
+     * Channel key identifier
+     */
+    key: string;
+
+    /**
+     * Channel name
+     */
+    name: string;
+
+    /**
+     * Channel profile image URL
+     */
+    imageUrl?: string;
+  };
+};
+
+export type LocationContext =
+  | CastEmbedLocationContext
+  | NotificationLocationContext
+  | LauncherLocationContext
+  | ChannelLocationContext;
+```
+
+#### Cast Embed
+
+Indicates that the Mini App was launched from a cast (where it is an embed).
+
+```ts
+> sdk.context.location
+{
+  type: "cast_embed",
+  cast: {
+    fid: 3621,
+    hash: "0xa2fbef8c8e4d00d8f84ff45f9763b8bae2c5c544",
+  }
+}
+```
+
+#### Notification
+
+Indicates that the Mini App was launched from a notification triggered by the frame.
+
+```ts
+> sdk.context.location
+{
+  type: "notification",
+  notification: {
+    notificationId: "f7e9ebaf-92f0-43b9-a410-ad8c24f3333b"
+    title: "Yoinked!",
+    body: "horsefacts captured the flag from you.",
+  }
+}
+```
+
+#### Launcher
+
+Indicates that the Mini App was launched directly by the client app outside of a context, e.g. via some type of catalog or a notification triggered by the client.
+
+```ts
+> sdk.context.location
+{
+  type: "launcher"
+}
+```
+
+### `user`
+
+Details about the calling user which can be used to customize the interface. This should be considered untrusted since it is passed in by the application, and there is no guarantee that it was authorized by the user.
+
+```ts
+export type AccountLocation = {
+  placeId: string;
+
+  /**
+   * Human-readable string describing the location
+   */
+  description: string;
+};
+
+export type UserContext = {
+  fid: number;
+  username?: string;
+  displayName?: string;
+
+  /**
+   * Profile image URL
+   */
+  pfpUrl?: string;
+  location?: AccountLocation;
+};
+```
+
+```ts
+> sdk.context.user
+{
+  "fid": 6841,
+  "username": "deodad",
+  "displayName": "Tony D'Addeo",
+  "pfp": "https://i.imgur.com/dMoIan7.jpg",
+  "bio": "Building @warpcast and @farcaster, new dad, like making food",
+  "location": {
+    "placeId": "ChIJLwPMoJm1RIYRetVp1EtGm10",
+    "description": "Austin, TX, USA"
+  }
+}
+```
+
+```ts
+type User = {
+  fid: number;
+  username?: string;
+  displayName?: string;
+  pfp?: string;
+  bio?: string;
+  location?: {
+    placeId: string;
+    description: string;
+  };
+};
+```
+
+### client
+
+Details about the Farcaster client running the Mini App. This should be considered untrusted
+
+- `clientFid`: the self-reported FID of the client (e.g. 9152 for Warpcast)
+- `added`: whether the user has added the Mini App to the client
+- `safeAreaInsets`: insets to avoid areas covered by navigation elements that obscure the view
+- `notificationDetails`: in case the user has enabled notifications, includes the `url` and `token` for sending notifications
+
+```ts
+export type SafeAreaInsets = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
+
+export type ClientContext = {
+  clientFid: number;
+  added: boolean;
+  notificationDetails?: FrameNotificationDetails;
+  safeAreaInsets?: SafeAreaInsets;
+};
+```
+
+```ts
+> sdk.context.client
+{
+  clientFid: 9152,
+  added: true,
+  safeAreaInsets: {
+    top: 0,
+    bottom: 20,
+    left: 0,
+    right: 0,
+  };
+  notificationDetails: {
+    url: "https://api.farcaster.xyz/v1/frame-notifications",
+    token: "a05059ef2415c67b08ecceb539201cbc6"
+  }
+}
+```
+
+```ts
+type FrameNotificationDetails = {
+  url: string;
+  token: string;
+};
+
+type SafeAreaInsets = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
+
+type ClientContext = {
+  clientFid: number;
+  added: boolean;
+  safeAreaInsets?: SafeAreaInsets;
+  notificationDetails?: FrameNotificationDetails;
+};
+```
+
+#### Using safeAreaInsets
+
+Mobile devices render navigation elements that obscure the view of an app. Use
+the `safeAreaInsets` to render content in the safe area that won't be obstructed.
+
+A basic usage would to wrap your view in a container that adds margin:
+
+```
+<div style={{
+  marginTop: context.client.safeAreaInsets.top,
+  marginBottom: context.client.safeAreaInsets.bottom,
+  marginLeft: context.client.safeAreaInsets.left,
+  marginRight: context.client.safeAreaInsets.right,
+}}>
+  ...your app view
+</div>
+```
+
+However, you may want to set these insets on specific elements: for example if
+you have tab bar at the bottom of your app with a different background, you'd
+want to set the bottom inset as padding there so it looks attached to the
+bottom of the view.

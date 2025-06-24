@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { exportUserData } from '../utils/api';
-import { useAuth } from '../hooks/useAuth';
+import { exportUserData } from '../utils/api.ts';
+import { useAuth } from '../hooks/useAuth.ts';
 
 const ExportData: React.FC = () => {
     const { user } = useAuth();

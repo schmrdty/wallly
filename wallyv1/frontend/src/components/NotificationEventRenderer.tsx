@@ -1,5 +1,5 @@
 import React from 'react';
-import type { NotificationEvent } from './Notifications';
+import type { NotificationEvent } from './Notifications.tsx';
 
 const eventTypes = {
   PermissionGranted: 'PermissionGranted',
